@@ -36,7 +36,7 @@ for pull in "${PULLS[@]}"; do
   git -c user.name=zarca -c user.email=zarca@localhost merge --quiet --no-edit "$resolved"
 done
 # Native wallet bindings: v0.1.1 plus the macOS storage host (jp4g/zakura-wasm-bindings#41).
-NATIVE_REVISION="967f8fc7cded6f1bcc61a7464b273ca09d41437a"
+NATIVE_REVISION="0019927e484128593f693236d240fbbe23386c45"
 printf '{\n  "repository": "https://github.com/jp4g/zakura-wasm-bindings.git",\n  "revision": "%s"\n}\n' "$NATIVE_REVISION" > scripts/native-source.json
 npm ci --silent
 npm run build
