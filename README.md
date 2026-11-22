@@ -20,6 +20,10 @@ bun test tests/unit               # unit tests
 
 Data lives in `$XDG_DATA_HOME/zarca` (default `~/.local/share/zarca`); set `ZARCA_DATA_DIR` to use another directory.
 
+### macOS (local builds)
+
+Without an Apple Developer ID, `bash scripts/build-macos-local.sh [--install]` builds Zarca.app and seals it with an ad hoc signature, the hardened runtime and the entitlements Bun's JIT and the WASM engine need. It runs on the Mac that built it. It isn't notarized, so copies downloaded on other Macs are blocked by Gatekeeper (#6).
+
 ### Headless runs
 
 `scripts/dev-headless.sh` starts the app on an Xvfb display with an isolated data directory and a development-only automation socket (dev channel only, never in release builds). `scripts/ui.sh shot out.png` captures the screen and `scripts/ui-run.sh script.js` drives the UI.
