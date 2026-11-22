@@ -8,12 +8,14 @@ import { FiatHint, PaymentStatusBadge, SyncDot, syncLabel, Zec } from "../compon
 import { ActivityRow, itemKey } from "../components/ActivityRow";
 import { ActivityDetail } from "../components/ActivityDetail";
 import { PageHeader, useShell } from "./Shell";
+import { MigrateModal } from "./Migrate";
 
 export function Overview() {
 	const { data, error, refresh } = useQuery("overview.get");
 	const sync = useSync();
 	const shell = useShell();
 	const [open, setOpen] = useState<ActivityItem | null>(null);
+	const [migrating, setMigrating] = useState(false);
 	const currency = shell.session.walletSettings?.fiatCurrency ?? "USD";
 	const today = localToday();
 	const rate = data?.fiat?.rate ?? null;
@@ -77,7 +79,10 @@ export function Overview() {
 						</div>
 						{data && BigInt(data.balance.unshielded) > 0n && (
 							<Callout tone="info" className="mt-4">
-								<Zec zat={data.balance.unshielded} /> is in older pools and is not spendable until it is moved to Ironwood.
+								<div className="flex items-center gap-3">
+									<span className="flex-1"><Zec zat={data.balance.unshielded} /> is in older pools and is not spendable until it is moved to Ironwood.</span>
+									<Button size="sm" variant="primary" onClick={() => setMigrating(true)}>Move to Ironwood</Button>
+								</div>
 							</Callout>
 						)}
 					</div>
@@ -186,6 +191,7 @@ export function Overview() {
 				)}
 			</Card>
 			<ActivityDetail item={open} today={today} onClose={() => { setOpen(null); void refresh(); }} />
+			{migrating && <MigrateModal onClose={() => { setMigrating(false); void refresh(); }} />}
 		</>
 	);
 }

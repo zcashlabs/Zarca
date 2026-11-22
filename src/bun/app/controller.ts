@@ -15,7 +15,7 @@ import type {
 } from "../../shared/types";
 import { generateOccurrences } from "../domain/schedules";
 import { backupSnapshot, openBackup, walletFingerprint } from "../domain/backup";
-import { Engine } from "../engine/engine";
+import { Engine, type MigrationStep } from "../engine/engine";
 import { defaultCurrency, NoRates, RateService, SUPPORTED_CURRENCIES } from "../fiat/rates";
 import { NearIntents } from "../near/intents";
 import { PaymentService } from "../payments/service";
@@ -59,6 +59,7 @@ export class Controller {
 	private pending = new Map<string, { phrase: Uint8Array; expires: number }>();
 	private lockReason: LockReason | null = null;
 	private busy: Promise<unknown> = Promise.resolve();
+	private migration: { session: Session; engine: Engine; steps: MigrationStep[]; expires: number } | null = null;
 
 	constructor(private readonly events: ControllerEvents, registry = new Registry()) {
 		this.registry = registry;
@@ -295,6 +296,12 @@ export class Controller {
 	private async lockInternal(reason: LockReason) {
 		const session = this.current;
 		if (!session) return;
+		if (this.migration) {
+			const m = this.migration;
+			this.migration = null;
+			for (const step of m.steps) await m.engine.abandon(step.proposal.operationId);
+			await m.engine.close().catch(() => {});
+		}
 		this.current = null;
 		this.lockReason = reason;
 		try {
@@ -310,6 +317,84 @@ export class Controller {
 				this.emitSession();
 			}
 		}
+	}
+
+	// ---- Moving older funds into Ironwood (#10) ----
+
+	/** Reopens the engine with the migration policy and returns proposals for review. */
+	prepareMigration() {
+		return this.exclusive(async () => {
+			const session = this.session;
+			if (this.migration) await this.endMigration(true);
+			const active = session.store.read((db) => db.query("SELECT COUNT(*) AS n FROM attempts WHERE status IN ('preparing', 'submitted', 'unknown')").get() as { n: number }).n;
+			if (active) throw new Error("Wait until payments in progress have settled before moving funds.");
+			await session.payments.stop();
+			await session.engine.close();
+			const key = subkey(session.dataKey, "engine");
+			let engine: Engine;
+			try {
+				engine = await Engine.open({ path: join(session.dir, "engine"), network: session.entry.network, server: this.registry.settings.servers[session.entry.network], encryptionKey: key, policy: "migration" });
+			} finally {
+				wipe(key);
+			}
+			try {
+				const status = await engine.wallet.sync();
+				if (!status.targetReached) throw new Error("Could not finish syncing; try again shortly.");
+				const steps = await engine.proposeMigration(randomUUID());
+				this.migration = { session, engine, steps, expires: Date.now() + 10 * 60_000 };
+				return steps.map((s) => ({ pool: s.pool, amountZat: s.amount.toString(), feeZat: s.fee.toString() }));
+			} catch (error) {
+				this.migration = { session, engine, steps: [], expires: 0 };
+				await this.endMigration(true);
+				throw error;
+			}
+		});
+	}
+
+	authorizeMigration(password: string) {
+		return this.exclusive(async () => {
+			const migration = this.migration;
+			if (!migration || migration.session !== this.current) throw new Error("Review the move again.");
+			if (Date.now() > migration.expires) {
+				await this.endMigration(true);
+				throw new Error("This review expired. Review the move again.");
+			}
+			const seed = await openSeed(join(migration.session.dir, "vault.json"), migration.session.entry.id, password);
+			const results: { pool: string; txids: string[]; error: string | null }[] = [];
+			try {
+				for (const step of migration.steps) {
+					try {
+						const pending = await migration.engine.execute(step.proposal, seed);
+						const snapshot = await pending.snapshot();
+						results.push({ pool: step.pool, txids: snapshot.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String), error: null });
+					} catch (error) {
+						results.push({ pool: step.pool, txids: [], error: error instanceof Error ? error.message : String(error) });
+					}
+				}
+			} finally {
+				seed.fill(0);
+				migration.steps = [];
+				await this.endMigration(false);
+			}
+			return results;
+		});
+	}
+
+	cancelMigration() {
+		return this.exclusive(() => this.endMigration(true));
+	}
+
+	/** Closes the migration engine and restores the normal session. */
+	private async endMigration(abandon: boolean) {
+		const migration = this.migration;
+		if (!migration) return;
+		this.migration = null;
+		if (abandon) for (const step of migration.steps) await migration.engine.abandon(step.proposal.operationId);
+		await migration.engine.close();
+		const { session } = migration;
+		if (this.current !== session) return;
+		const engine = await this.openEngine(join(session.dir, "engine"), session.entry.network, session.dataKey);
+		this.activate(session.entry, session.dir, session.dataKey, session.store, engine);
 	}
 
 	// ---- Wallet management ----

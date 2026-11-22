@@ -512,6 +512,10 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 			return path ? { path } : null;
 		},
 
+		"migration.prepare": () => controller.prepareMigration(),
+		"migration.authorize": (p) => controller.authorizeMigration(str(p.password, "password", 1024)),
+		"migration.cancel": () => controller.cancelMigration(),
+
 		"near.assets": () => controller.near.assets(),
 		"system.openExternal": (p) => {
 			const url = new URL(str(p.url, "url", 2000));

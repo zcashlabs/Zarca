@@ -117,6 +117,10 @@ export interface Api {
 	"backup.export": { params: { password: string; backupPassword: string }; result: { path: string } | null };
 	"files.chooseBackup": { params: void; result: { path: string } | null };
 
+	"migration.prepare": { params: void; result: { pool: "transparent" | "sapling"; amountZat: string; feeZat: string }[] };
+	"migration.authorize": { params: { password: string }; result: { pool: string; txids: string[]; error: string | null }[] };
+	"migration.cancel": { params: void; result: void };
+
 	"near.assets": { params: void; result: AssetView[] };
 	"system.openExternal": { params: { url: string }; result: void };
 	"system.copy": { params: { text: string }; result: void };

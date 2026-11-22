@@ -14,6 +14,7 @@ import {
 	type PendingPayment,
 	type Proposal,
 	type SyncStatus,
+	type TransactionPolicy,
 	type WalletBalance,
 	type WalletClient,
 	type WalletTransaction,
@@ -29,6 +30,27 @@ export interface EngineOptions {
 	readonly network: NetworkName;
 	readonly server: string;
 	readonly encryptionKey: Uint8Array;
+	/** "migration" spends only older pools (transparent, Sapling) with change into Ironwood. */
+	readonly policy?: "default" | "migration";
+}
+
+const MIGRATION_POLICY: TransactionPolicy = {
+	spendPools: ["transparent", "sapling"],
+	transparent: "allow-owned",
+	changePool: "ironwood",
+	feeRule: "zip317-standard",
+	confirmations: { trusted: 3, untrusted: 3, allowZeroConfirmationShielding: false },
+	expiry: { kind: "offset", blocks: 80 },
+	lockExpiryBlocks: 20,
+	shieldingThreshold: 10_000n,
+	freshness: { mode: "require-synced", maxLagBlocks: 0 },
+};
+
+export interface MigrationStep {
+	readonly pool: "transparent" | "sapling";
+	readonly amount: bigint;
+	readonly fee: bigint;
+	readonly proposal: Proposal;
 }
 
 const RECEIVE_REQUEST = { format: "unified", transparent: "omit", sapling: "omit", ironwood: "require" } as const;
@@ -63,6 +85,7 @@ export class Engine {
 				network,
 				storage: { kind: "node-filesystem", path: options.path, encryptionKey: options.encryptionKey },
 				recovery: { mode: "online", timeoutMs: 15_000 },
+				...(options.policy === "migration" ? { transactionPolicy: MIGRATION_POLICY } : {}),
 			});
 		} catch (error) {
 			throw describeError(error);
@@ -296,6 +319,51 @@ export class Engine {
 		} catch (error) {
 			throw describeError(error);
 		}
+	}
+
+	/**
+	 * Proposes moving funds from older pools into Ironwood (requires an engine
+	 * opened with the migration policy): shield transparent funds, then send
+	 * Sapling funds to the wallet's own Ironwood address.
+	 */
+	async proposeMigration(key: string): Promise<MigrationStep[]> {
+		const steps: MigrationStep[] = [];
+		const balance = (await this.balance()).raw.amounts;
+		if (!balance) throw new EngineError("Balances are not available yet; wait for sync to finish.", "SYNC_REQUIRED", true);
+		if (balance.transparent.regular.spendable > 0n) {
+			try {
+				const proposal = await this.wallet.propose({ kind: "shield", accountId: this.accountId, toPool: "ironwood", idempotencyKey: `${key}-t` });
+				const amount = proposal.steps.reduce((n, s) => n + s.inputs.reduce((m, i) => m + i.value, 0n), 0n) - proposal.totalFee;
+				steps.push({ pool: "transparent", amount, fee: proposal.totalFee, proposal });
+			} catch (error) {
+				if (!(isSdkError(error) && error.code === "NOTHING_TO_SHIELD")) throw describeError(error);
+			}
+		}
+		const sapling = balance.sapling.spendable;
+		if (sapling > 0n) {
+			const to = await this.receiveAddress();
+			let fee = 10_000n;
+			for (let attempt = 0; attempt < 5; attempt++) {
+				if (sapling <= fee) break;
+				let proposal: Proposal;
+				try {
+					proposal = await this.wallet.propose({ accountId: this.accountId, to, amount: sapling - fee, idempotencyKey: `${key}-s${attempt}` });
+				} catch (error) {
+					if (isSdkError(error) && error.code === "INSUFFICIENT_FUNDS") {
+						fee += 5_000n;
+						continue;
+					}
+					throw describeError(error);
+				}
+				if (proposal.totalFee === fee) {
+					steps.push({ pool: "sapling", amount: sapling - fee, fee, proposal });
+					break;
+				}
+				await this.abandon(proposal.operationId);
+				fee = proposal.totalFee;
+			}
+		}
+		return steps;
 	}
 
 	async abandon(operationId: string) {
