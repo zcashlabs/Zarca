@@ -280,7 +280,7 @@
 
     "@vitejs/plugin-react": ["@vitejs/plugin-react@5.2.0", "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-5.2.0.tgz", {"dependencies": {"@babel/core": "^7.29.0", "@babel/plugin-transform-react-jsx-self": "^7.27.1", "@babel/plugin-transform-react-jsx-source": "^7.27.1", "@rolldown/pluginutils": "1.0.0-rc.3", "@types/babel__core": "^7.20.5", "react-refresh": "^0.18.0"}, "peerDependencies": {"vite": "^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0"}}, "sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw=="],
 
-    "@zcashlabs/zcash.js": ["@zcashlabs/zcash.js@vendor/zcashlabs-zcash.js.tgz", {"dependencies": {"@grpc/grpc-js": "1.14.7"}}, "sha512-KuCGwlOERY2vVlJis5lP0UdhLsA/DEC3pXrGzIWe3FSo2orMXUe/4AhUuNj8QWxaSiNtK2TnqXNz8KK9/4HmcQ=="],
+    "@zcashlabs/zcash.js": ["@zcashlabs/zcash.js@vendor/zcashlabs-zcash.js.tgz", {"dependencies": {"@grpc/grpc-js": "1.14.7"}}, "sha512-n6I4nWg5l9WQZZmB9fch8UmXI1OE57OqS3E26vN/Gg8QL2+X8LQgufAiYLXQN6a2Y+OYdMKB7hRtNAqiV2rVAw=="],
 
     "ansi-regex": ["ansi-regex@5.0.1", "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.1.tgz", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 

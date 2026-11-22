@@ -46,7 +46,13 @@ export default {
 			...packages,
 		},
 		watchIgnore: ["dist/**"],
-		mac: { bundleCEF: false },
+		mac: {
+			bundleCEF: false,
+			// Camera access is requested only when the user opens the QR scanner.
+			entitlements: {
+				"com.apple.security.device.camera": "Zarca uses the camera only to scan payment QR codes.",
+			},
+		},
 		linux: { bundleCEF: false },
 		win: { bundleCEF: false },
 	},
