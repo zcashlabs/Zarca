@@ -228,11 +228,29 @@ export class Engine {
 		});
 	}
 
-	async stopSync() {
+	async stopSync(quiet = false) {
 		this.syncAbort?.abort();
 		await this.syncTask?.catch(() => {});
 		this.syncAbort = null;
-		this.emit({ phase: "stopped" });
+		if (!quiet) this.emit({ phase: "stopped" });
+	}
+
+	private pauseDepth = 0;
+	/**
+	 * Proposals require a wallet synced to the tip it last observed. The continuous
+	 * watcher observes new tips (every ~25 s) while work is in flight, so proposing
+	 * and sending run with background sync paused after a finite catch-up.
+	 */
+	private async paused<T>(fn: () => Promise<T>): Promise<T> {
+		const resume = this.pauseDepth === 0 && this.syncTask !== null;
+		this.pauseDepth++;
+		try {
+			if (resume) await this.stopSync(true);
+			return await fn();
+		} finally {
+			this.pauseDepth--;
+			if (resume && !this.closed) this.startSync();
+		}
 	}
 
 	async balance(): Promise<{ view: BalanceView; raw: WalletBalance }> {
@@ -307,8 +325,30 @@ export class Engine {
 		}
 	}
 
-	async propose(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
-		try {
+	propose(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
+		return this.paused(() => this.proposeSynced(args));
+	}
+
+	private async proposeSynced(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
+		// Freshness also requires pending transaction enhancement to be resolved, which a
+		// finite sync may leave for its next pass (zcashlabs/zcashjs#35). Catch up a few times.
+		for (let round = 0; ; round++) {
+			try {
+				return await this.proposeOnce(args);
+			} catch (error) {
+				if (!(isSdkError(error) && error.code === "SYNC_REQUIRED") || round >= 4) throw describeError(error);
+			}
+			try {
+				await this.wallet.sync({ signal: AbortSignal.timeout(90_000) });
+			} catch {
+				// A failed catch-up surfaces as SYNC_REQUIRED on the next attempt.
+			}
+			if (round > 0) await Bun.sleep(1_000 * round);
+		}
+	}
+
+	private async proposeOnce(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
+		{
 			return await this.wallet.propose({
 				accountId: this.accountId,
 				to: args.to,
@@ -316,8 +356,6 @@ export class Engine {
 				...(args.memo ? { memo: { text: args.memo } } : {}),
 				idempotencyKey: args.idempotencyKey,
 			});
-		} catch (error) {
-			throw describeError(error);
 		}
 	}
 
@@ -375,7 +413,11 @@ export class Engine {
 	}
 
 	/** Executes exactly the reviewed proposal with a signer restored for this authorization only. */
-	async execute(proposal: Proposal, mnemonic: Uint8Array): Promise<PendingPayment> {
+	execute(proposal: Proposal, mnemonic: Uint8Array): Promise<PendingPayment> {
+		return this.paused(() => this.executeNow(proposal, mnemonic));
+	}
+
+	private async executeNow(proposal: Proposal, mnemonic: Uint8Array): Promise<PendingPayment> {
 		let signer: MemorySigner | null = null;
 		try {
 			signer = await this.wallet.accounts.restoreSigner({ accountId: this.accountId, mnemonic });

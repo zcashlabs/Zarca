@@ -121,11 +121,13 @@ describe("payment authorization", () => {
 			const [payment] = store.read((db) => listPayments(db));
 			expect(payment!.status).toBe("submitting");
 			expect(payment!.attempts[0]!.status).toBe("preparing");
-			expect(payment!.attempts[0]!.operationId).toBe("op-1");
+			// The reviewed proposal (op-1) is rebuilt with identical terms right before signing.
+			expect(payment!.attempts[0]!.operationId).toBe("op-2");
 		};
 		const payment = await service.authorize(review.reviewId, "pw");
 		expect(payment.status).toBe("pending");
-		expect(payment.attempts[0]!.txids).toEqual(["tx-op-1"]);
+		expect(payment.attempts[0]!.txids).toEqual(["tx-op-2"]);
+		expect(engine.abandoned).toContain("op-1");
 		expect(payment.note).toBe("private");
 		expect(payment.memo).toBe("hello");
 	});
@@ -169,10 +171,32 @@ describe("payment authorization", () => {
 	});
 });
 
+describe("stale proposals", () => {
+	test("a block arriving before signing is retried with identical terms", async () => {
+		let stale = 1;
+		engine.executeImpl = async () => {
+			if (stale-- > 0) throw Object.assign(new Error("stale"), { code: "STALE_PROPOSAL", stage: "proposal", retryable: false });
+		};
+		const payment = await service.authorize((await service.prepare(draft)).reviewId, "pw");
+		expect(payment.status).toBe("pending");
+		expect(payment.attempts).toHaveLength(1);
+		expect(payment.attempts[0]!.operationId).toBe("op-3");
+		expect(engine.abandoned).toEqual(expect.arrayContaining(["op-1", "op-2"]));
+	});
+
+	test("a changed fee requires a new review and sends nothing", async () => {
+		const review = await service.prepare(draft);
+		const original = engine.propose.bind(engine);
+		engine.propose = async (args) => ({ ...(await original(args)), totalFee: 20_000n });
+		await expect(service.authorize(review.reviewId, "pw")).rejects.toThrow("fee changed");
+		expect(store.read((db) => listPayments(db))).toHaveLength(0);
+	});
+});
+
 describe("reconciliation", () => {
 	test("confirmation completes the payment; expiry fails it safely", async () => {
 		const ok = await service.authorize((await service.prepare(draft)).reviewId, "pw");
-		const op = engine.ops.get("op-1")!;
+		const op = engine.ops.get("op-2")!;
 		op.phase = "complete";
 		op.steps[0]!.inclusion = { height: 990, confirmations: 11 };
 		await service.reconcile();
@@ -181,7 +205,7 @@ describe("reconciliation", () => {
 		expect(done.settledAt).not.toBeNull();
 
 		const second = await service.authorize((await service.prepare(draft)).reviewId, "pw");
-		const op2 = engine.ops.get("op-2")!;
+		const op2 = engine.ops.get("op-4")!;
 		op2.steps[0]!.expiry = { reached: true };
 		op2.steps[0]!.observation = { state: "notSeen" };
 		await service.reconcile();

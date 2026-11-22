@@ -198,7 +198,7 @@ export class PaymentService {
 			try {
 				proposal = await this.deps.engine.propose({ to, amount, memo, idempotencyKey: `${key}-${attempt}` });
 			} catch (error) {
-				if (isZcashError(error) && error.code === "INSUFFICIENT_FUNDS") {
+				if ((error as { code?: string })?.code === "INSUFFICIENT_FUNDS") {
 					fee += 5_000n;
 					continue;
 				}
@@ -233,7 +233,11 @@ export class PaymentService {
 		try {
 			seed = await this.deps.openSeed(password); // throws on a wrong password; the review stays valid
 			this.reviews.delete(reviewId);
-			const { draft, amountZat, proposal, near } = review;
+			const { draft, amountZat, near } = review;
+			// Blocks arrive every 25 s and proposals must match the current tip, so the
+			// reviewed proposal is rebuilt with identical terms immediately before signing.
+			// A different fee means different terms: the user must review again.
+			let proposal = await this.rebuild(review, 0);
 
 			// Persist intent and attempt before anything can reach the network.
 			const paymentId = this.deps.store.write((db) => {
@@ -274,17 +278,35 @@ export class PaymentService {
 			});
 			this.deps.changed();
 
-			try {
-				const pending = await this.deps.engine.execute(proposal, seed);
-				const snapshot = await pending.snapshot();
-				const txids = snapshot.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String);
-				this.deps.store.write((db) => {
-					updateAttempt(db, review.attemptId, "submitted", { txids });
-					setPaymentStatus(db, paymentId, "pending");
-				});
-				if (near && txids[0]) void this.deps.near.notifyDeposit(near.depositAddress, txids[0]);
-			} catch (error) {
-				await this.recordExecutionFailure(review.attemptId, paymentId, proposal.operationId, error);
+			for (let attempt = 0; ; attempt++) {
+				try {
+					const pending = await this.deps.engine.execute(proposal, seed);
+					const snapshot = await pending.snapshot();
+					const txids = snapshot.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String);
+					this.deps.store.write((db) => {
+						updateAttempt(db, review.attemptId, "submitted", { txids });
+						setPaymentStatus(db, paymentId, "pending");
+					});
+					if (near && txids[0]) void this.deps.near.notifyDeposit(near.depositAddress, txids[0]);
+					break;
+				} catch (error) {
+					const state = await this.deps.engine.operation(proposal.operationId).catch(() => null);
+					const dispatched = state?.steps.some((s) => s.attempts.length > 0) ?? true;
+					if (attempt < 2 && !dispatched && isZcashError(error) && error.code === "STALE_PROPOSAL") {
+						// A block arrived between proposal and signing; nothing left the wallet.
+						await this.deps.engine.abandon(proposal.operationId);
+						try {
+							proposal = await this.rebuild(review, attempt + 1);
+						} catch (rebuildError) {
+							await this.recordExecutionFailure(review.attemptId, paymentId, proposal.operationId, rebuildError);
+							break;
+						}
+						this.deps.store.write((db) => updateAttempt(db, review.attemptId, "preparing", { operationId: proposal.operationId }));
+						continue;
+					}
+					await this.recordExecutionFailure(review.attemptId, paymentId, proposal.operationId, error);
+					break;
+				}
 			}
 			this.deps.changed();
 			return this.deps.store.read((db) => getPayment(db, paymentId, this.deps.currency()));
@@ -292,6 +314,23 @@ export class PaymentService {
 			seed?.fill(0);
 			this.authorizing = false;
 		}
+	}
+
+	/** Re-proposes the reviewed terms; refuses if the fee (and so the total debit) changed. */
+	private async rebuild(review: Review, round: number): Promise<Proposal> {
+		const to = review.near ? review.near.depositAddress : review.draft.recipient.address;
+		await this.deps.engine.abandon(review.proposal.operationId);
+		const fresh = await this.deps.engine.propose({
+			to,
+			amount: review.amountZat,
+			memo: review.near ? null : review.draft.memo,
+			idempotencyKey: `${review.attemptId}-${round}`,
+		});
+		if (fresh.totalFee !== review.proposal.totalFee) {
+			await this.deps.engine.abandon(fresh.operationId);
+			throw new Error("The network fee changed since your review. Review the payment again.");
+		}
+		return fresh;
 	}
 
 	private async recordExecutionFailure(attemptId: string, paymentId: string, operationId: string, error: unknown) {
