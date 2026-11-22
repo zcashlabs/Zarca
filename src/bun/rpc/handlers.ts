@@ -164,7 +164,11 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 		const s = session();
 		const currency = s.settings.fiatCurrency;
 		const payments = s.store.read((db) => listPayments(db, currency));
-		const history = s.engine.hasAccount ? await s.engine.history() : [];
+		// History is re-read only after the scan advanced (or at most every 30 s).
+		if (!s.history || Date.now() - s.history.at > 30_000) {
+			s.history = { at: Date.now(), entries: s.engine.hasAccount ? await s.engine.history() : [] };
+		}
+		const history = s.history.entries;
 		const incomingTxids = history.filter((h) => h.balanceDelta > 0n).map((h) => String(h.txid));
 		await loadMemos(incomingTxids);
 		const chain = classifyHistory(s.store, history, payments, s.memos, s.receivedAt, s.engine.syncState.tipHeight, currency);

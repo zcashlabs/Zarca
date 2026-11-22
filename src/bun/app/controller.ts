@@ -34,6 +34,8 @@ export interface Session {
 	readonly memos: Map<string, string[]>;
 	/** txid -> our receiving addresses, used to recognize refunds. */
 	readonly receivedAt: Map<string, string[]>;
+	/** Cached chain history, invalidated when the scan advances. */
+	history: { at: number; entries: Awaited<ReturnType<Engine["history"]>> } | null;
 	/** Exchange rates for this wallet's network (none on testnet). */
 	readonly rates: RateService;
 	settings: WalletSettings;
@@ -225,6 +227,7 @@ export class Controller {
 			engine,
 			memos,
 			receivedAt: new Map(),
+			history: null,
 			rates,
 			settings,
 			dataKey,
@@ -242,9 +245,20 @@ export class Controller {
 		this.current = session;
 		this.lockReason = null;
 		store.write((db) => generateOccurrences(db));
+		let lastScanned: number | null = null;
+		let lastPhase: string | null = null;
 		engine.onSync((state) => {
-			if (this.current === session) this.events.sync(state);
-			if (state.phase === "synced") this.events.changed();
+			if (this.current !== session) return;
+			this.events.sync(state);
+			// Data only changes when new blocks were scanned or a sync completed.
+			const advanced = state.scannedHeight !== lastScanned && state.phase === "synced";
+			const finished = state.phase === "synced" && lastPhase !== "synced";
+			lastScanned = state.scannedHeight;
+			lastPhase = state.phase;
+			if (advanced || finished) {
+				session.history = null;
+				this.events.changed();
+			}
 		});
 		engine.startSync();
 		session.payments.start();
