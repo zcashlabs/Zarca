@@ -196,7 +196,9 @@ export class Engine {
 			const start = this.scanStartHeight ?? scanned;
 			progress = tip <= start ? 1 : Math.min(1, Math.max(0, (scanned - start) / (tip - start)));
 		}
-		const synced = status.targetReached && status.activity !== "running";
+		// Following the tip a few blocks behind is still "synced"; avoids flicker on every new block.
+		const nearTip = tip !== null && scanned !== null && tip - scanned <= 3 && this.lastSync.phase === "synced";
+		const synced = (status.targetReached && status.activity !== "running") || (nearTip && status.activity !== "failed");
 		this.emit({
 			phase: status.activity === "failed" ? "error" : synced ? "synced" : "syncing",
 			tipHeight: tip,

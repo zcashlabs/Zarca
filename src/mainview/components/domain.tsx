@@ -86,11 +86,11 @@ export function SyncDot({ sync }: { sync: SyncState | null }) {
 	);
 }
 
-export function syncLabel(sync: SyncState | null): string {
+export function syncLabel(sync: SyncState | null, compact = false): string {
 	if (!sync) return "Connecting…";
 	switch (sync.phase) {
 		case "synced":
-			return sync.tipHeight ? `Synced · block ${sync.tipHeight.toLocaleString()}` : "Synced";
+			return sync.tipHeight && !compact ? `Synced · block ${sync.tipHeight.toLocaleString()}` : "Synced";
 		case "syncing":
 			return sync.progress !== null && sync.progress < 1 ? `Syncing ${Math.floor(sync.progress * 100)}%` : "Syncing…";
 		case "error":

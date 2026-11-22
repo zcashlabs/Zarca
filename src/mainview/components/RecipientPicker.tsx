@@ -144,7 +144,7 @@ export function RecipientPicker({ value, onChange, network }: {
 				{open && matches.length > 0 && !(value && mode === "zcash") && (
 					<div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-pop animate-fade">
 						{matches.map((c) => (
-							<button key={c.id} type="button" onMouseDown={(e) => { e.preventDefault(); pickContact(c); }} className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-surface-2">
+							<button key={c.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pickContact(c)} className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-surface-2">
 								<Avatar name={c.name} photo={c.photo} size={28} />
 								<span className="min-w-0 flex-1">
 									<span className="block truncate text-[13px] font-medium">{c.name}</span>

@@ -29,15 +29,16 @@ export function Reports() {
 	const period = preset === "custom" ? custom : range(preset);
 	const { data, loading, error } = useQuery("reports.get", period, [period.from, period.to]);
 	const [exporting, setExporting] = useState(false);
+	const testnet = shell.session.unlocked?.network === "testnet";
 	const currency = data?.currency ?? shell.session.walletSettings?.fiatCurrency ?? "USD";
-	const money = (value: string | null) => (value === null ? "—" : formatFiat(value, currency));
+	const money = (value: string | null) => (value === null || testnet ? "" : formatFiat(value, currency));
 	const maxTag = useMemo(() => (data?.byTag ?? []).reduce((m, t) => (BigInt(t.zat) > m ? BigInt(t.zat) : m), 0n), [data]);
 
 	return (
 		<>
 			<PageHeader
 				title="Reports"
-				subtitle={`${formatDate(period.from)} – ${formatDate(period.to)} · values in ${currency}`}
+				subtitle={`${formatDate(period.from)} – ${formatDate(period.to)} · ${testnet ? "testnet coins have no fiat value" : `values in ${currency}`}`}
 				actions={<Button icon={<FileSpreadsheet className="size-4" />} onClick={() => setExporting(true)}>Export CSV</Button>}
 			/>
 			<div className="mb-5 flex flex-wrap items-end gap-3">
@@ -109,10 +110,10 @@ export function Reports() {
 					)}
 				</Card>
 			</div>
-			{data && (data.received.missingRates + data.spent.missingRates + data.fees.missingRates > 0) && (
+			{data && !testnet && (data.received.missingRates + data.spent.missingRates + data.fees.missingRates > 0) && (
 				<p className="mt-4 text-xs text-warning">Some items have no exchange rate for their date and are excluded from fiat totals. ZEC totals are complete.</p>
 			)}
-			<p className="mt-2 text-xs text-muted">Exchange rates: CoinGecko and Kraken public data. Completed activity keeps the rate recorded when it settled.</p>
+			{!testnet && <p className="mt-2 text-xs text-muted">Exchange rates: CoinGecko and Kraken public data. Completed activity keeps the rate recorded when it settled.</p>}
 			{exporting && <ExportCsv period={period} onClose={() => setExporting(false)} />}
 		</>
 	);
@@ -123,7 +124,7 @@ function Kpi({ label, zat, fiat, missing, tone, hint }: { label: string; zat?: s
 		<Card>
 			<div className="text-[13px] font-medium text-muted" title={hint}>{label}</div>
 			{zat === undefined ? <Skeleton className="mt-2 h-7 w-36" /> : <Zec zat={zat} className={cx("mt-1.5 block text-2xl font-semibold tracking-tight", tone === "success" && BigInt(zat) > 0n && "text-success")} />}
-			<div className="mt-1 h-4 text-xs text-muted">{fiat}{missing ? <span className="text-warning"> · {missing} without rate</span> : null}</div>
+			<div className="mt-1 h-4 text-xs text-muted">{fiat}{fiat && missing ? <span className="text-warning"> · {missing} without rate</span> : null}</div>
 		</Card>
 	);
 }

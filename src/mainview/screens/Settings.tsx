@@ -62,8 +62,8 @@ export function SettingsScreen() {
 						</div>
 					</Field>
 					<div className="grid grid-cols-2 gap-3">
-						<Field label="Display currency" hint="Changing it keeps recorded historical valuations.">
-							<Select value={session.walletSettings?.fiatCurrency} onChange={(e) => setWallet.run({ fiatCurrency: e.target.value })}>
+						<Field label="Display currency" hint={wallet.network === "testnet" ? "Not used for testnet wallets." : "Changing it keeps recorded historical valuations."}>
+							<Select value={session.walletSettings?.fiatCurrency} disabled={wallet.network === "testnet"} onChange={(e) => setWallet.run({ fiatCurrency: e.target.value })}>
 								{(currencies ?? [session.walletSettings?.fiatCurrency ?? "USD"]).map((c) => <option key={c} value={c}>{c}</option>)}
 							</Select>
 						</Field>

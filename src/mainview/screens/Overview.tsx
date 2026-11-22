@@ -60,7 +60,7 @@ export function Overview() {
 											</span>
 										</span>
 									) : (
-										<span className="text-xs text-muted">Fiat value unavailable</span>
+										<span className="text-xs text-muted">{shell.session.unlocked?.network === "testnet" ? "Testnet coins have no fiat value" : "Fiat value unavailable"}</span>
 									)}
 								</div>
 							</>

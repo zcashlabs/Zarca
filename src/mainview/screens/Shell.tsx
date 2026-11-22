@@ -106,9 +106,9 @@ export function Shell({ session }: { session: SessionState }) {
 						))}
 					</nav>
 					<div className="mt-auto border-t border-border px-4 py-3.5">
-						<div className="flex items-center gap-2.5" title={sync?.error ?? undefined}>
+						<div className="flex items-center gap-2.5" title={sync?.error ?? (sync?.tipHeight ? `Block ${sync.tipHeight.toLocaleString()}` : undefined)}>
 							<SyncDot sync={sync} />
-							<span className="num min-w-0 flex-1 truncate text-xs text-muted">{syncLabel(sync)}</span>
+							<span className="num min-w-0 flex-1 truncate text-xs text-muted">{syncLabel(sync, true)}</span>
 							<button
 								type="button"
 								onClick={() => void call("session.lock", { reason: "manual" })}

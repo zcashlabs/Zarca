@@ -18,7 +18,10 @@ import { AlertTriangle, Check, CheckCircle2, Copy, Info, Loader2, X, XCircle } f
 import { call } from "../lib/rpc";
 import { initials } from "../lib/format";
 
-export const cx = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(" ");
+import { twMerge } from "tailwind-merge";
+
+/** Joins classes; later utilities override conflicting earlier ones (e.g. w-full + w-36). */
+export const cx = (...classes: (string | false | null | undefined)[]) => twMerge(classes.filter(Boolean).join(" "));
 
 // ---------- Buttons ----------
 
@@ -298,12 +301,12 @@ export function TagInput({ value, onChange, suggestions = [], placeholder = "Add
 			{open && (matches.length > 0 || text) && (
 				<div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-pop animate-fade">
 					{matches.map((s) => (
-						<button key={s} type="button" onMouseDown={(e) => { e.preventDefault(); add(s); }} className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-surface-2">
+						<button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => add(s)} className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-surface-2">
 							{s}
 						</button>
 					))}
 					{text && !matches.some((m) => m.toLowerCase() === text.toLowerCase()) && (
-						<button type="button" onMouseDown={(e) => { e.preventDefault(); add(text); }} className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm text-muted hover:bg-surface-2">
+						<button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => add(text)} className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-sm text-muted hover:bg-surface-2">
 							Create “<span className="text-text">{text.trim()}</span>”
 						</button>
 					)}
