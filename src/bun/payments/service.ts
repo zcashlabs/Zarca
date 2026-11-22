@@ -7,7 +7,7 @@
 //   broadcast, so a crash at any point is recoverable.
 // - An attempt whose outcome is uncertain blocks any retry until reconciled.
 // - Cross-chain funding is not completion; refunds are never shown as paid.
-import { isZcashError, type PaymentState, type Proposal } from "@zcashlabs/zcash.js";
+import type { PaymentState, Proposal } from "@zcashlabs/zcash.js";
 import type { FiatQuote, NearQuoteView, PaymentView, RecipientSnapshot, SendDraft, SendReview } from "../../shared/types";
 import {
 	activeAttempts,
@@ -21,7 +21,8 @@ import {
 	updatePaymentTerms,
 } from "../domain/payments";
 import { cleanTags, cleanText, newId, now, parseZat } from "../domain/util";
-import { describeError, type Engine } from "../engine/engine";
+import type { Engine } from "../engine/engine";
+import { describeError, isSdkError as isZcashError } from "../engine/errors";
 import { recordValuation, type RateService } from "../fiat/rates";
 import { NearIntents, validateForeignAddress } from "../near/intents";
 import type { TreasuryStore } from "../storage/treasury-store";
