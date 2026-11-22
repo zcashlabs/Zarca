@@ -78,6 +78,18 @@ const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 
 export function createHandlers(controller: Controller, host: Host): Handlers {
 	const session = () => controller.session;
+	// Files the user picked in a native dialog this session; the webview cannot name other paths.
+	const chosen = new Set<string>();
+	const chooseFile = async (extension: string) => {
+		const path = await host.chooseFile(extension);
+		if (path) chosen.add(path);
+		return path;
+	};
+	const pickedPath = (value: unknown) => {
+		const path = str(value, "file", 4096);
+		if (!chosen.has(path)) throw new Error("Choose the file again.");
+		return path;
+	};
 
 	async function validateDestination(destination: Omit<Destination, "id">): Promise<string | null> {
 		const { engine } = session();
@@ -197,7 +209,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 		"wallet.import": async (p) => {
 			let backup: { bytes: Uint8Array; password: string } | null = null;
 			if (p.backupPath) {
-				const bytes = readFileIfExists(str(p.backupPath, "backup", 4096));
+				const bytes = readFileIfExists(pickedPath(p.backupPath));
 				if (!bytes) throw new Error("The backup file could not be read");
 				backup = { bytes, password: str(p.backupPassword ?? "", "backup password", 1024) };
 			}
@@ -346,7 +358,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 			return { path };
 		},
 		"contacts.importPreview": async () => {
-			const path = await host.chooseFile("json");
+			const path = await chooseFile("json");
 			if (!path) return null;
 			const text = readFileSync(path, "utf8");
 			const data = parseContactExport(text);
@@ -360,7 +372,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 		},
 		"contacts.importApply": async (p) => {
 			const s = session();
-			const data = parseContactExport(readFileSync(str(p.path, "file", 4096), "utf8"));
+			const data = parseContactExport(readFileSync(pickedPath(p.path), "utf8"));
 			const candidates = s.store.read((db) => previewImport(db, data));
 			const toAdd: { input: ContactInput; mergeInto: string | null }[] = [];
 			let skipped = 0;
@@ -492,7 +504,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 			return { path };
 		},
 		"files.chooseBackup": async () => {
-			const path = await host.chooseFile("zarca-backup");
+			const path = await chooseFile("zarca-backup");
 			return path ? { path } : null;
 		},
 
