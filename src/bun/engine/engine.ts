@@ -14,6 +14,7 @@ import {
 	type PendingPayment,
 	type Proposal,
 	type SyncStatus,
+	type TransactionPolicy,
 	type WalletBalance,
 	type WalletClient,
 	type WalletTransaction,
@@ -29,6 +30,27 @@ export interface EngineOptions {
 	readonly network: NetworkName;
 	readonly server: string;
 	readonly encryptionKey: Uint8Array;
+	/** "migration" spends only older pools (transparent, Sapling) with change into Ironwood. */
+	readonly policy?: "default" | "migration";
+}
+
+const MIGRATION_POLICY: TransactionPolicy = {
+	spendPools: ["transparent", "sapling"],
+	transparent: "allow-owned",
+	changePool: "ironwood",
+	feeRule: "zip317-standard",
+	confirmations: { trusted: 3, untrusted: 3, allowZeroConfirmationShielding: false },
+	expiry: { kind: "offset", blocks: 80 },
+	lockExpiryBlocks: 20,
+	shieldingThreshold: 10_000n,
+	freshness: { mode: "require-synced", maxLagBlocks: 0 },
+};
+
+export interface MigrationStep {
+	readonly pool: "transparent" | "sapling";
+	readonly amount: bigint;
+	readonly fee: bigint;
+	readonly proposal: Proposal;
 }
 
 const RECEIVE_REQUEST = { format: "unified", transparent: "omit", sapling: "omit", ironwood: "require" } as const;
@@ -63,6 +85,7 @@ export class Engine {
 				network,
 				storage: { kind: "node-filesystem", path: options.path, encryptionKey: options.encryptionKey },
 				recovery: { mode: "online", timeoutMs: 15_000 },
+				...(options.policy === "migration" ? { transactionPolicy: MIGRATION_POLICY } : {}),
 			});
 		} catch (error) {
 			throw describeError(error);
@@ -205,11 +228,29 @@ export class Engine {
 		});
 	}
 
-	async stopSync() {
+	async stopSync(quiet = false) {
 		this.syncAbort?.abort();
 		await this.syncTask?.catch(() => {});
 		this.syncAbort = null;
-		this.emit({ phase: "stopped" });
+		if (!quiet) this.emit({ phase: "stopped" });
+	}
+
+	private pauseDepth = 0;
+	/**
+	 * Proposals require a wallet synced to the tip it last observed. The continuous
+	 * watcher observes new tips (every ~25 s) while work is in flight, so proposing
+	 * and sending run with background sync paused after a finite catch-up.
+	 */
+	private async paused<T>(fn: () => Promise<T>): Promise<T> {
+		const resume = this.pauseDepth === 0 && this.syncTask !== null;
+		this.pauseDepth++;
+		try {
+			if (resume) await this.stopSync(true);
+			return await fn();
+		} finally {
+			this.pauseDepth--;
+			if (resume && !this.closed) this.startSync();
+		}
 	}
 
 	async balance(): Promise<{ view: BalanceView; raw: WalletBalance }> {
@@ -284,8 +325,41 @@ export class Engine {
 		}
 	}
 
-	async propose(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
+	propose(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
+		return this.paused(() => this.proposeSynced(args));
+	}
+
+	private async proposeSynced(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
 		try {
+			return await this.fresh(() => this.proposeOnce(args));
+		} catch (error) {
+			throw describeError(error);
+		}
+	}
+
+	/**
+	 * Runs a proposal, catching up when the wallet is not fresh. Freshness also
+	 * requires pending transaction enhancement to be resolved, which a finite sync
+	 * may leave for its next pass (zcashlabs/zcashjs#35). Other errors pass through raw.
+	 */
+	private async fresh<T>(propose: () => Promise<T>): Promise<T> {
+		for (let round = 0; ; round++) {
+			try {
+				return await propose();
+			} catch (error) {
+				if (!(isSdkError(error) && error.code === "SYNC_REQUIRED") || round >= 4) throw error;
+			}
+			try {
+				await this.wallet.sync({ signal: AbortSignal.timeout(90_000) });
+			} catch {
+				// A failed catch-up surfaces as SYNC_REQUIRED on the next attempt.
+			}
+			if (round > 0) await Bun.sleep(1_000 * round);
+		}
+	}
+
+	private async proposeOnce(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
+		{
 			return await this.wallet.propose({
 				accountId: this.accountId,
 				to: args.to,
@@ -293,9 +367,52 @@ export class Engine {
 				...(args.memo ? { memo: { text: args.memo } } : {}),
 				idempotencyKey: args.idempotencyKey,
 			});
-		} catch (error) {
-			throw describeError(error);
 		}
+	}
+
+	/**
+	 * Proposes moving funds from older pools into Ironwood (requires an engine
+	 * opened with the migration policy): shield transparent funds, then send
+	 * Sapling funds to the wallet's own Ironwood address.
+	 */
+	async proposeMigration(key: string): Promise<MigrationStep[]> {
+		const steps: MigrationStep[] = [];
+		const balance = (await this.balance()).raw.amounts;
+		if (!balance) throw new EngineError("Balances are not available yet; wait for sync to finish.", "SYNC_REQUIRED", true);
+		if (balance.transparent.regular.spendable > 0n) {
+			try {
+				const proposal = await this.fresh(() => this.wallet.propose({ kind: "shield", accountId: this.accountId, toPool: "ironwood", idempotencyKey: `${key}-t` }));
+				const amount = proposal.steps.reduce((n, s) => n + s.inputs.reduce((m, i) => m + i.value, 0n), 0n) - proposal.totalFee;
+				steps.push({ pool: "transparent", amount, fee: proposal.totalFee, proposal });
+			} catch (error) {
+				if (!(isSdkError(error) && error.code === "NOTHING_TO_SHIELD")) throw describeError(error);
+			}
+		}
+		const sapling = balance.sapling.spendable;
+		if (sapling > 0n) {
+			const to = await this.receiveAddress();
+			let fee = 10_000n;
+			for (let attempt = 0; attempt < 5; attempt++) {
+				if (sapling <= fee) break;
+				let proposal: Proposal;
+				try {
+					proposal = await this.fresh(() => this.wallet.propose({ accountId: this.accountId, to, amount: sapling - fee, idempotencyKey: `${key}-s${attempt}` }));
+				} catch (error) {
+					if (isSdkError(error) && error.code === "INSUFFICIENT_FUNDS") {
+						fee += 5_000n;
+						continue;
+					}
+					throw describeError(error);
+				}
+				if (proposal.totalFee === fee) {
+					steps.push({ pool: "sapling", amount: sapling - fee, fee, proposal });
+					break;
+				}
+				await this.abandon(proposal.operationId);
+				fee = proposal.totalFee;
+			}
+		}
+		return steps;
 	}
 
 	async abandon(operationId: string) {
@@ -307,7 +424,11 @@ export class Engine {
 	}
 
 	/** Executes exactly the reviewed proposal with a signer restored for this authorization only. */
-	async execute(proposal: Proposal, mnemonic: Uint8Array): Promise<PendingPayment> {
+	execute(proposal: Proposal, mnemonic: Uint8Array): Promise<PendingPayment> {
+		return this.paused(() => this.executeNow(proposal, mnemonic));
+	}
+
+	private async executeNow(proposal: Proposal, mnemonic: Uint8Array): Promise<PendingPayment> {
 		let signer: MemorySigner | null = null;
 		try {
 			signer = await this.wallet.accounts.restoreSigner({ accountId: this.accountId, mnemonic });

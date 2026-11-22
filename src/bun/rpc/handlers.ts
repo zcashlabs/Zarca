@@ -13,7 +13,7 @@ import type {
 	ScheduleView,
 } from "../../shared/types";
 import { addDays, todayIn } from "../../shared/recurrence";
-import { buildActivity, classifyHistory } from "../domain/activity";
+import { buildActivity, classifyHistory, markInternal } from "../domain/activity";
 import { allTags, setNote, setTags } from "../domain/annotations";
 import { createBackup } from "../domain/backup";
 import {
@@ -163,7 +163,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 	async function activity(): Promise<ActivityItem[]> {
 		const s = session();
 		const currency = s.settings.fiatCurrency;
-		const payments = s.store.read((db) => listPayments(db, currency));
+		let payments = s.store.read((db) => listPayments(db, currency));
 		// History is re-read only after the scan advanced (or at most every 30 s).
 		if (!s.history || Date.now() - s.history.at > 30_000) {
 			s.history = { at: Date.now(), entries: s.engine.hasAccount ? await s.engine.history() : [] };
@@ -172,6 +172,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 		const incomingTxids = history.filter((h) => h.balanceDelta > 0n).map((h) => String(h.txid));
 		await loadMemos(incomingTxids);
 		const chain = classifyHistory(s.store, history, payments, s.memos, s.receivedAt, s.engine.syncState.tipHeight, currency);
+		payments = markInternal(payments, history);
 		const items = buildActivity(payments, chain);
 		if (!valuating) {
 			valuating = true;
@@ -511,6 +512,10 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 			const path = await chooseFile("zarca-backup");
 			return path ? { path } : null;
 		},
+
+		"migration.prepare": () => controller.prepareMigration(),
+		"migration.authorize": (p) => controller.authorizeMigration(str(p.password, "password", 1024)),
+		"migration.cancel": () => controller.cancelMigration(),
 
 		"near.assets": () => controller.near.assets(),
 		"system.openExternal": (p) => {

@@ -97,6 +97,21 @@ export function classifyHistory(
 	return { incoming, external };
 }
 
+/**
+ * Marks completed payments whose transactions only cost the treasury their fee
+ * (the recipient was this wallet) as internal transfers.
+ */
+export function markInternal(payments: readonly PaymentView[], history: readonly HistoryEntry[]): PaymentView[] {
+	const byTxid = new Map(history.map((h) => [String(h.txid), h]));
+	return payments.map((p) => {
+		const txids = p.attempts.filter((a) => a.status === "confirmed").flatMap((a) => a.txids);
+		if (!txids.length || p.recipient.route !== "zcash") return p;
+		const entries = txids.map((t) => byTxid.get(t));
+		const internal = entries.every((e) => e !== undefined && e.fee !== null && e.balanceDelta === -e.fee);
+		return internal ? { ...p, internal: true } : p;
+	});
+}
+
 export function buildActivity(payments: readonly PaymentView[], chain: ChainActivity): ActivityItem[] {
 	const items: ActivityItem[] = [
 		...payments.map((payment): ActivityItem => ({

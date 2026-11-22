@@ -24,6 +24,7 @@ export function ActivityRow({ item, today, onOpen, rate, currency, compact }: {
 		subtitle = [
 			p.recipient.route === "near-intents" ? `${p.recipient.assetSymbol ?? "Asset"} on ${p.recipient.chain.toUpperCase()}` : p.recipient.destinationLabel ?? "Zcash",
 			p.scheduleId ? "Recurring" : null,
+			p.internal ? "Internal transfer · fee only" : null,
 		].filter(Boolean).join(" · ");
 		amount = <Zec zat={`-${p.amountZat}`} className="font-medium" />;
 		status = <PaymentStatusBadge payment={p} today={today} />;

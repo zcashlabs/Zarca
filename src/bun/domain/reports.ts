@@ -88,7 +88,9 @@ export function buildReport(args: {
 			}
 			// Spending counts once, when the payment completed. Refunded swaps never paid the recipient.
 			if (p.status === "completed" && p.settledAt && inRange(p.settledAt)) {
-				spend(BigInt(p.amountZat), BigInt(p.feeZat ?? "0"), p.tags, p.valuation, p.settledAt);
+				// Transfers to the wallet's own addresses are not spending; only the fee left.
+				if (p.internal) fees.add(BigInt(p.feeZat ?? "0"), args.rate(p.valuation, p.settledAt));
+				else spend(BigInt(p.amountZat), BigInt(p.feeZat ?? "0"), p.tags, p.valuation, p.settledAt);
 			}
 		} else if (item.kind === "incoming") {
 			const i = item.incoming;

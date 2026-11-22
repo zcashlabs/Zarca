@@ -66,15 +66,15 @@ export function buildCsv(items: readonly ActivityItem[], options: { includeNotes
 			row = {
 				reference: `payment:${p.id}`,
 				date: p.settledAt ?? p.updatedAt,
-				type: p.recipient.route === "near-intents" ? "cross_chain_payment" : "payment",
+				type: p.internal ? "internal_transfer" : p.recipient.route === "near-intents" ? "cross_chain_payment" : "payment",
 				status: p.status,
 				counterparty: p.recipient.contactName,
 				destination_network: p.recipient.chain,
 				destination_asset: p.recipient.assetSymbol,
 				address: p.recipient.address,
-				amount_zec: ZEC(amount),
+				amount_zec: p.internal ? ZEC(0n) : ZEC(amount),
 				fee_zec: charged ? ZEC(-fee) : ZEC(0n),
-				net_zec: charged ? ZEC(amount - fee) : ZEC(0n),
+				net_zec: !charged ? ZEC(0n) : p.internal ? ZEC(-fee) : ZEC(amount - fee),
 				txids: p.attempts.flatMap((a) => a.txids).join(" "),
 				recipient_memo: p.memo,
 			};
