@@ -23,6 +23,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.4
+      - name: Native storage host owner lease (jp4g/zakura-wasm-bindings#41)
+        run: |
+          git clone --depth 1 --branch feat/macos-node-host https://github.com/jp4g/zakura-wasm-bindings.git /tmp/zwb
+          node /tmp/zwb/tests/node-fs-lock.mjs
+          bun /tmp/zwb/tests/node-fs-lock.mjs
+        continue-on-error: true
       - name: Cache zcash.js build
         uses: actions/cache@v4
         with:
