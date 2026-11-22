@@ -16,7 +16,14 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
 		(async () => {
 			try {
 				if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access is not available in this environment.");
-				stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false });
+				try {
+					stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false });
+				} catch (first) {
+					// WebKit (macOS) can reject preferences it cannot satisfy instead of relaxing them.
+					const name = (first as { name?: string }).name;
+					if (name === "NotAllowedError") throw first;
+					stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+				}
 				if (stopped) return;
 				const v = video.current!;
 				v.srcObject = stream;
@@ -44,8 +51,8 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
 				setError(
 					name === "NotAllowedError"
 						? "Camera permission was denied. Allow camera access to scan, or paste the address instead."
-						: name === "NotFoundError"
-							? "No camera was found."
+						: name === "NotFoundError" || name === "OverconstrainedError" || /constraint/i.test((e as Error)?.message ?? "")
+							? "No camera was found. Paste the address instead."
 							: e instanceof Error ? e.message : "The camera could not be started.",
 				);
 			}
