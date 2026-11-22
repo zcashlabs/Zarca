@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 export function dataRoot(): string {
 	const override = process.env.ZARCA_DATA_DIR;
 	if (override) return override;
+	if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "Zarca");
 	const xdg = process.env.XDG_DATA_HOME;
 	return join(xdg && xdg.startsWith("/") ? xdg : join(homedir(), ".local", "share"), "zarca");
 }
