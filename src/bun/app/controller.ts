@@ -304,11 +304,15 @@ export class Controller {
 		}
 		this.current = null;
 		this.lockReason = reason;
+		// Locking must always complete: graceful steps are bounded so a stalled
+		// network call can never keep keys in memory or the treasury open.
+		const bounded = (work: Promise<unknown>) =>
+			Promise.race([work.catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10_000))]);
 		try {
-			await session.payments.stop();
+			await bounded(session.payments.stop());
 		} finally {
 			try {
-				await session.engine.close();
+				await bounded(session.engine.close());
 			} finally {
 				session.store.close();
 				wipe(session.dataKey);
