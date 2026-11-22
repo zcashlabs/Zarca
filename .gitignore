@@ -1,0 +1,9 @@
+.hutch/
+node_modules/
+build/
+dist/
+artifacts/
+*.tsbuildinfo
+.cache/
+vendor/*.tgz
+.env*
