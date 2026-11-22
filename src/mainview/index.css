@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Design tokens. Light is the base; dark overrides below. */
+:root {
+	--bg: #f6f5f1;
+	--bg-sidebar: #efede7;
+	--surface: #ffffff;
+	--surface-2: #f4f2ed;
+	--surface-3: #ebe8e1;
+	--border: #e3dfd6;
+	--border-strong: #d2cdc1;
+	--text: #18181b;
+	--text-2: #4a4950;
+	--muted: #77757d;
+	--accent: #b9820f;
+	--accent-strong: #9a6a05;
+	--accent-soft: #f7ecd2;
+	--accent-text: #ffffff;
+	--success: #1d7f55;
+	--success-soft: #ddf2e8;
+	--danger: #c03a28;
+	--danger-soft: #fbe3de;
+	--warning: #a76a10;
+	--warning-soft: #fbefd8;
+	--info: #2d63c8;
+	--info-soft: #e1eafb;
+	--focus: #c99320;
+	--shadow-sm: 0 1px 2px rgb(24 24 27 / 0.05);
+	--shadow-md: 0 1px 2px rgb(24 24 27 / 0.04), 0 8px 24px -8px rgb(24 24 27 / 0.12);
+	--shadow-lg: 0 24px 60px -12px rgb(24 24 27 / 0.28);
+	color-scheme: light;
+}
+
+[data-theme="dark"] {
+	--bg: #0d0e11;
+	--bg-sidebar: #111216;
+	--surface: #16181d;
+	--surface-2: #1c1f25;
+	--surface-3: #242830;
+	--border: #262a32;
+	--border-strong: #343944;
+	--text: #ededf0;
+	--text-2: #c4c5cc;
+	--muted: #8e909a;
+	--accent: #e3b048;
+	--accent-strong: #f0c264;
+	--accent-soft: rgb(227 176 72 / 0.13);
+	--accent-text: #17130a;
+	--success: #45c08a;
+	--success-soft: rgb(69 192 138 / 0.13);
+	--danger: #f0715f;
+	--danger-soft: rgb(240 113 95 / 0.13);
+	--warning: #e9a94a;
+	--warning-soft: rgb(233 169 74 / 0.13);
+	--info: #77a4f5;
+	--info-soft: rgb(119 164 245 / 0.13);
+	--focus: #e3b048;
+	--shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+	--shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+	--shadow-lg: 0 24px 60px -12px rgb(0 0 0 / 0.7);
+	color-scheme: dark;
+}
+
+@theme inline {
+	--color-bg: var(--bg);
+	--color-sidebar: var(--bg-sidebar);
+	--color-surface: var(--surface);
+	--color-surface-2: var(--surface-2);
+	--color-surface-3: var(--surface-3);
+	--color-border: var(--border);
+	--color-border-strong: var(--border-strong);
+	--color-text: var(--text);
+	--color-text-2: var(--text-2);
+	--color-muted: var(--muted);
+	--color-accent: var(--accent);
+	--color-accent-strong: var(--accent-strong);
+	--color-accent-soft: var(--accent-soft);
+	--color-accent-text: var(--accent-text);
+	--color-success: var(--success);
+	--color-success-soft: var(--success-soft);
+	--color-danger: var(--danger);
+	--color-danger-soft: var(--danger-soft);
+	--color-warning: var(--warning);
+	--color-warning-soft: var(--warning-soft);
+	--color-info: var(--info);
+	--color-info-soft: var(--info-soft);
+	--font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+	--shadow-card: var(--shadow-md);
+	--shadow-pop: var(--shadow-lg);
+}
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 1.45;
+	-webkit-font-smoothing: antialiased;
+	font-feature-settings: "cv11", "ss01";
+	overflow: hidden;
+	user-select: none;
+}
+
+input,
+textarea,
+[data-selectable] {
+	user-select: text;
+}
+
+.num {
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: "tnum", "cv11";
+}
+
+:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
+::selection {
+	background: var(--accent-soft);
+}
+
+/* Quiet scrollbars */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border-strong) transparent;
+}
+
+@keyframes fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+@keyframes pop-in {
+	from { opacity: 0; transform: translateY(8px) scale(0.985); }
+	to { opacity: 1; transform: none; }
+}
+@keyframes slide-in {
+	from { opacity: 0; transform: translateX(16px); }
+	to { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+	from { background-position: -200% 0; }
+	to { background-position: 200% 0; }
+}
+.animate-fade { animation: fade-in 160ms ease-out; }
+.animate-pop { animation: pop-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.animate-slide { animation: slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.skeleton {
+	background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+	background-size: 200% 100%;
+	animation: shimmer 1.4s infinite linear;
+	border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		animation-duration: 1ms !important;
+		transition-duration: 1ms !important;
+	}
+}

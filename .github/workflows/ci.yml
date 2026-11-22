@@ -17,7 +17,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.5
-      # Unit tests use only Bun built-ins and local sources.
+      # Unit tests never load zcash.js, so they skip the (slow) vendored build.
+      - name: Install dependencies without the vendored zcash.js
+        run: |
+          jq 'del(.dependencies["@zcashlabs/zcash.js"])' package.json > package.ci.json
+          mv package.ci.json package.json
+          bun install --no-save
       - run: bun test tests/unit
 
   typecheck:

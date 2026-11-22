@@ -172,7 +172,9 @@ export interface IncomingView {
 	readonly note: string | null;
 	readonly tags: readonly string[];
 	readonly valuation: ValuationView | null;
-	readonly kind: "received" | "shielding" | "change" | "other";
+	/** "refund": funds returned by a cross-chain provider for one of our payments; never revenue. */
+	readonly kind: "received" | "refund" | "shielding" | "change" | "other";
+	readonly refundFor: string | null; // payment id when kind === "refund"
 }
 
 /** Outgoing chain transactions not created through Zarca (e.g. from another wallet with the same seed). */
