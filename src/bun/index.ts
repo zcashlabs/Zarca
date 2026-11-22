@@ -93,12 +93,15 @@ async function openWindow() {
 		return;
 	}
 	const rpc = createRpc();
+	const url = await viewUrl();
 	window = new BrowserWindow({
 		title: "Zarca",
-		url: await viewUrl(),
+		url,
 		frame: { width: 1280, height: 840, x: 120, y: 80 },
 		rpc,
 	});
+	// The view may only show bundled pages (and the local dev server during development).
+	window.webview.setNavigationRules(["^*", "views://*", ...(url.startsWith(DEV_SERVER) ? [`${DEV_SERVER}/*`] : [])]);
 	window.on("close", () => {
 		window = null;
 		// The app keeps running (and syncing) until the wallet locks.
