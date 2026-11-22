@@ -342,7 +342,7 @@ export class Controller {
 				wipe(key);
 			}
 			try {
-				const status = await engine.wallet.sync();
+				const status = await engine.wallet.sync({ signal: AbortSignal.timeout(120_000) });
 				if (!status.targetReached) throw new Error("Could not finish syncing; try again shortly.");
 				const steps = await engine.proposeMigration(randomUUID());
 				this.migration = { session, engine, steps, expires: Date.now() + 10 * 60_000 };

@@ -20,6 +20,8 @@ test("spending counts each payment once; tags overlap; refunds and open items ar
 		payment("c", "70000000", [], "refunded", { settledAt: null }),
 		payment("d", "20000000", [], "scheduled", { settledAt: null, dueDate: "2026-03-01" }),
 		payment("e", "30000000", [], "scheduled", { settledAt: null, dueDate: "2026-04-01" }),
+		payment("g", "90000000", ["Payroll"], "completed", { internal: true }), // to our own address
+
 		{ kind: "incoming", at: "2026-03-05T00:00:00Z", incoming: { txid: "r", amountZat: "300000000", minedHeight: 1, blockTime: "2026-03-05T00:00:00Z", confirmations: 9, memos: [], note: null, tags: [], valuation: null, kind: "received", refundFor: null } },
 		{ kind: "incoming", at: "2026-03-06T00:00:00Z", incoming: { txid: "f", amountZat: "69000000", minedHeight: 2, blockTime: "2026-03-06T00:00:00Z", confirmations: 9, memos: [], note: null, tags: [], valuation: null, kind: "refund", refundFor: "c" } },
 	];
@@ -30,7 +32,7 @@ test("spending counts each payment once; tags overlap; refunds and open items ar
 	});
 	expect(report.spent.zat).toBe("150000000");
 	expect(report.spent.fiat).toBe("150.00");
-	expect(report.fees.zat).toBe("20000");
+	expect(report.fees.zat).toBe("30000"); // includes the internal transfer's fee
 	expect(report.received.zat).toBe("300000000"); // refund excluded
 	expect(report.received.fiat).toBe("270.00");
 	expect(report.byTag.map((t) => [t.tag, t.zat])).toEqual([["Payroll", "150000000"], ["Q1", "100000000"]]);

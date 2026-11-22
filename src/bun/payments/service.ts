@@ -57,6 +57,8 @@ export interface PaymentServiceDeps {
 export class PaymentService {
 	private reviews = new Map<string, Review>();
 	private authorizing = false;
+	/** Attempts being executed right now; reconciliation must not touch them. */
+	private inFlight = new Set<string>();
 	private reconciling: Promise<void> | null = null;
 	private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -278,13 +280,15 @@ export class PaymentService {
 			});
 			this.deps.changed();
 
+			this.inFlight.add(review.attemptId);
+			try {
 			for (let attempt = 0; ; attempt++) {
 				try {
 					const pending = await this.deps.engine.execute(proposal, seed);
 					const snapshot = await pending.snapshot();
 					const txids = snapshot.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String);
 					this.deps.store.write((db) => {
-						updateAttempt(db, review.attemptId, "submitted", { txids });
+						updateAttempt(db, review.attemptId, "submitted", { txids, error: null });
 						setPaymentStatus(db, paymentId, "pending");
 					});
 					if (near && txids[0]) void this.deps.near.notifyDeposit(near.depositAddress, txids[0]);
@@ -307,6 +311,9 @@ export class PaymentService {
 					await this.recordExecutionFailure(review.attemptId, paymentId, proposal.operationId, error);
 					break;
 				}
+			}
+			} finally {
+				this.inFlight.delete(review.attemptId);
 			}
 			this.deps.changed();
 			return this.deps.store.read((db) => getPayment(db, paymentId, this.deps.currency()));
@@ -367,7 +374,7 @@ export class PaymentService {
 	}
 
 	private async reconcileOnce() {
-		const attempts = this.deps.store.read((db) => activeAttempts(db));
+		const attempts = this.deps.store.read((db) => activeAttempts(db)).filter((a) => !this.inFlight.has(a.id));
 		let changed = false;
 		for (const attempt of attempts) {
 			try {
@@ -381,6 +388,7 @@ export class PaymentService {
 
 	/** Returns true if anything changed. */
 	async reconcileAttempt(attemptId: string): Promise<boolean> {
+		if (this.inFlight.has(attemptId)) return false; // being executed right now
 		const { store, engine } = this.deps;
 		const attempt = store.read((db) => getAttempt(db, attemptId));
 		const before = JSON.stringify(attempt);

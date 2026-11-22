@@ -330,13 +330,24 @@ export class Engine {
 	}
 
 	private async proposeSynced(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
-		// Freshness also requires pending transaction enhancement to be resolved, which a
-		// finite sync may leave for its next pass (zcashlabs/zcashjs#35). Catch up a few times.
+		try {
+			return await this.fresh(() => this.proposeOnce(args));
+		} catch (error) {
+			throw describeError(error);
+		}
+	}
+
+	/**
+	 * Runs a proposal, catching up when the wallet is not fresh. Freshness also
+	 * requires pending transaction enhancement to be resolved, which a finite sync
+	 * may leave for its next pass (zcashlabs/zcashjs#35). Other errors pass through raw.
+	 */
+	private async fresh<T>(propose: () => Promise<T>): Promise<T> {
 		for (let round = 0; ; round++) {
 			try {
-				return await this.proposeOnce(args);
+				return await propose();
 			} catch (error) {
-				if (!(isSdkError(error) && error.code === "SYNC_REQUIRED") || round >= 4) throw describeError(error);
+				if (!(isSdkError(error) && error.code === "SYNC_REQUIRED") || round >= 4) throw error;
 			}
 			try {
 				await this.wallet.sync({ signal: AbortSignal.timeout(90_000) });
@@ -370,7 +381,7 @@ export class Engine {
 		if (!balance) throw new EngineError("Balances are not available yet; wait for sync to finish.", "SYNC_REQUIRED", true);
 		if (balance.transparent.regular.spendable > 0n) {
 			try {
-				const proposal = await this.wallet.propose({ kind: "shield", accountId: this.accountId, toPool: "ironwood", idempotencyKey: `${key}-t` });
+				const proposal = await this.fresh(() => this.wallet.propose({ kind: "shield", accountId: this.accountId, toPool: "ironwood", idempotencyKey: `${key}-t` }));
 				const amount = proposal.steps.reduce((n, s) => n + s.inputs.reduce((m, i) => m + i.value, 0n), 0n) - proposal.totalFee;
 				steps.push({ pool: "transparent", amount, fee: proposal.totalFee, proposal });
 			} catch (error) {
@@ -385,7 +396,7 @@ export class Engine {
 				if (sapling <= fee) break;
 				let proposal: Proposal;
 				try {
-					proposal = await this.wallet.propose({ accountId: this.accountId, to, amount: sapling - fee, idempotencyKey: `${key}-s${attempt}` });
+					proposal = await this.fresh(() => this.wallet.propose({ accountId: this.accountId, to, amount: sapling - fee, idempotencyKey: `${key}-s${attempt}` }));
 				} catch (error) {
 					if (isSdkError(error) && error.code === "INSUFFICIENT_FUNDS") {
 						fee += 5_000n;

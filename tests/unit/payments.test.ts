@@ -132,6 +132,17 @@ describe("payment authorization", () => {
 		expect(payment.memo).toBe("hello");
 	});
 
+	test("reconciliation never touches an attempt that is executing", async () => {
+		engine.executeImpl = async () => {
+			// The 20 s reconciliation timer fires while proving is still running.
+			await service.reconcile();
+		};
+		const payment = await service.authorize((await service.prepare(draft)).reviewId, "pw");
+		expect(payment.status).toBe("pending");
+		expect(payment.attempts[0]!.error).toBeNull();
+		expect(engine.abandoned).not.toContain(payment.attempts[0]!.operationId);
+	});
+
 	test("a wrong password keeps the review usable and sends nothing", async () => {
 		const review = await service.prepare(draft);
 		await expect(service.authorize(review.reviewId, "nope")).rejects.toBeInstanceOf(IncorrectPasswordError);

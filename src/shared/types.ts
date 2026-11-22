@@ -160,6 +160,8 @@ export interface PaymentView {
 	readonly createdAt: string;
 	readonly updatedAt: string;
 	readonly settledAt: string | null;
+	/** Sent to one of this wallet's own addresses: only the fee left the treasury. */
+	readonly internal?: boolean;
 }
 
 export interface IncomingView {
