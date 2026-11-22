@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, Clock, KeyRound, LockKeyhole, Pencil, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
 import type { PaymentView, RecipientSnapshot, SendDraft, SendReview } from "../../shared/types";
+import type { SendPrefill } from "./Shell";
 import { call, RpcError } from "../lib/rpc";
 import { useInterval, useQuery } from "../lib/hooks";
-import { fiat, formatDateTime, formatFiat, parseZecInput, shortAddress, zatToInput } from "../lib/format";
-import { Badge, Button, Callout, cx, ErrorText, Field, Input, KeyValue, Modal, Mono, TagInput, Textarea } from "../components/ui";
+import { fiat, formatDate, formatDateTime, formatFiat, parseZecInput, shortAddress, zatToInput } from "../lib/format";
+import { Badge, Button, Callout, Confirm, cx, ErrorText, Field, Input, KeyValue, Modal, Mono, TagInput, Textarea, useToast } from "../components/ui";
 import { FiatHint, PasswordInput, Zec } from "../components/domain";
 import { RecipientPicker, useAddressCheck } from "../components/RecipientPicker";
 import { useShell } from "./Shell";
 
 type Step = "compose" | "review" | "done";
 
-export function SendFlow({ prefill, onClose }: { prefill?: Partial<SendDraft>; onClose: () => void }) {
+export function SendFlow({ prefill, onClose }: { prefill?: SendPrefill; onClose: () => void }) {
 	const shell = useShell();
 	const network = shell.session.unlocked!.network;
 	const currency = shell.session.walletSettings?.fiatCurrency ?? "USD";
@@ -111,6 +112,10 @@ export function SendFlow({ prefill, onClose }: { prefill?: Partial<SendDraft>; o
 
 	if (step === "done" && result) return <SendResult payment={result} onClose={onClose} />;
 
+	const occurrenceActions = prefill?.paymentId && prefill.scheduleId ? (
+		<OccurrenceActions paymentId={prefill.paymentId} scheduleId={prefill.scheduleId} dueDate={prefill.dueDate ?? null} disabled={pending} onDone={close} />
+	) : null;
+
 	if (step === "review" && review) {
 		return (
 			<Modal
@@ -129,6 +134,7 @@ export function SendFlow({ prefill, onClose }: { prefill?: Partial<SendDraft>; o
 					</>
 				}
 			>
+				{occurrenceActions}
 				<ReviewDetails review={review} currency={currency} onExpired={backToEdit} onRefresh={async () => { backToEdit(); await prepare(); }} />
 				<div className="mt-5 rounded-xl border border-border bg-surface-2/60 p-4">
 					<div className="mb-2 flex items-center gap-2 text-[13px] font-medium"><LockKeyhole className="size-4 text-accent" /> Authorize this payment</div>
@@ -158,6 +164,7 @@ export function SendFlow({ prefill, onClose }: { prefill?: Partial<SendDraft>; o
 			}
 		>
 			<div className="flex flex-col gap-5">
+				{occurrenceActions}
 				<Field label="To">
 					{fixedTerms ? (
 						<div className="flex items-center gap-3 rounded-xl border border-border bg-surface-2/60 px-3 py-2.5 text-sm">
@@ -327,5 +334,85 @@ function SendResult({ payment, onClose }: { payment: PaymentView; onClose: () =>
 				<div className="mt-4"><Zec zat={payment.amountZat} className="text-xl font-semibold" /></div>
 			</div>
 		</Modal>
+	);
+}
+
+/** Skip one occurrence or cancel its schedule, each behind an explicit confirmation screen. */
+function OccurrenceActions({ paymentId, scheduleId, dueDate, disabled, onDone }: {
+	paymentId: string;
+	scheduleId: string;
+	dueDate: string | null;
+	disabled: boolean;
+	onDone: () => void;
+}) {
+	const [confirm, setConfirm] = useState<"skip" | "cancel" | null>(null);
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [outstanding, setOutstanding] = useState<number | null>(null);
+	const toast = useToast();
+	const run = async (fn: () => Promise<string>) => {
+		setPending(true);
+		setError(null);
+		try {
+			toast("success", await fn());
+			setConfirm(null);
+			onDone();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setPending(false);
+		}
+	};
+	return (
+		<div className="-mt-1 mb-1 flex items-center gap-1 rounded-xl bg-surface-2 py-1.5 pl-3.5 pr-1.5 text-[13px]">
+			<span className="mr-auto whitespace-nowrap text-text-2">Due <span className="font-medium text-text">{dueDate ? formatDate(dueDate) : "—"}</span></span>
+			<Button variant="ghost" size="sm" disabled={disabled} onClick={() => setConfirm("skip")}>Skip this payment</Button>
+			<Button
+				variant="ghost"
+				size="sm"
+				className="text-danger"
+				disabled={disabled}
+				onClick={async () => {
+					setOutstanding((await call("schedules.outstanding", { id: scheduleId })).outstanding);
+					setConfirm("cancel");
+				}}
+			>
+				Cancel recurring schedule
+			</Button>
+			<Confirm
+				open={confirm === "skip"}
+				onClose={() => setConfirm(null)}
+				title="Skip this payment?"
+				confirmLabel="Skip payment"
+				pending={pending}
+				error={error}
+				onConfirm={() => run(async () => {
+					await call("payment.skip", { id: paymentId });
+					return "Payment skipped";
+				})}
+			>
+				<p>Only the {dueDate ? formatDate(dueDate) : "current"} occurrence is skipped. Future payments in this schedule continue.</p>
+			</Confirm>
+			<Confirm
+				open={confirm === "cancel"}
+				onClose={() => setConfirm(null)}
+				title="Cancel the recurring schedule?"
+				confirmLabel="Cancel schedule"
+				pending={pending}
+				error={error}
+				onConfirm={() => run(async () => {
+					const result = await call("schedules.cancel", { id: scheduleId });
+					return `Schedule cancelled${result.cancelledOccurrences ? ` · ${result.cancelledOccurrences} unpaid occurrence(s) cancelled` : ""}`;
+				})}
+			>
+				<p>No further payments will be generated, and this payment will not be sent.</p>
+				<p>
+					{outstanding
+						? `${outstanding} unpaid occurrence${outstanding === 1 ? " (including this one) that has" : "s (including this one) that have"} not been sent will be cancelled.`
+						: "There are no other unpaid occurrences."}{" "}
+					Payments already sent are kept and cannot be undone.
+				</p>
+			</Confirm>
+		</div>
 	);
 }

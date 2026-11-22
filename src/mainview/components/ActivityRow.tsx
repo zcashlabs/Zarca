@@ -32,8 +32,8 @@ export function ActivityRow({ item, today, onOpen, rate, currency, compact }: {
 	} else if (item.kind === "incoming") {
 		const i = item.incoming;
 		icon = <ActivityIcon kind="in" />;
-		title = i.kind === "received" ? "Received" : i.kind === "shielding" ? "Shielded funds" : "Internal transfer";
-		subtitle = i.memos[0] ? `“${i.memos[0].slice(0, 60)}${i.memos[0].length > 60 ? "…" : ""}”` : i.minedHeight ? `Block ${i.minedHeight.toLocaleString()}` : "Awaiting confirmation";
+		title = i.kind === "received" ? "Received" : i.kind === "refund" ? "Swap refund" : i.kind === "shielding" ? "Shielded funds" : "Internal transfer";
+		subtitle = i.kind === "refund" ? "Returned by NEAR Intents · not revenue" : i.memos[0] ? `“${i.memos[0].slice(0, 60)}${i.memos[0].length > 60 ? "…" : ""}”` : i.minedHeight ? `Block ${i.minedHeight.toLocaleString()}` : "Awaiting confirmation";
 		amount = <Zec zat={i.amountZat} sign className={cx("font-medium", i.kind === "received" && "text-success")} />;
 		status = i.minedHeight === null ? <Badge tone="info" dot>Pending</Badge> : null;
 		tags = i.tags;

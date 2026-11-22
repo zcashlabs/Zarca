@@ -115,11 +115,13 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 				try {
 					const tx = await s.engine.transaction(txid);
 					const accountId = s.engine.accountId;
-					const memos = (tx?.outputs ?? [])
-						.filter((o) => o.receivingAccountIds.includes(accountId) && o.isChange !== true && o.memo.kind === "text")
+					const received = (tx?.outputs ?? []).filter((o) => o.receivingAccountIds.includes(accountId) && o.isChange !== true);
+					const memos = received
+						.filter((o) => o.memo.kind === "text")
 						.map((o) => (o.memo as { text: string }).text.trim())
 						.filter(Boolean);
 					s.memos.set(txid, memos);
+					s.receivedAt.set(txid, received.map((o) => o.address).filter((a): a is string => typeof a === "string"));
 				} catch {
 					// Leave uncached and retry later.
 				}
@@ -153,7 +155,7 @@ export function createHandlers(controller: Controller, host: Host): Handlers {
 		const history = s.engine.hasAccount ? await s.engine.history() : [];
 		const incomingTxids = history.filter((h) => h.balanceDelta > 0n).map((h) => String(h.txid));
 		await loadMemos(incomingTxids);
-		const chain = classifyHistory(s.store, history, payments, s.memos, s.engine.syncState.tipHeight, currency);
+		const chain = classifyHistory(s.store, history, payments, s.memos, s.receivedAt, s.engine.syncState.tipHeight, currency);
 		const items = buildActivity(payments, chain);
 		if (!valuating) {
 			valuating = true;

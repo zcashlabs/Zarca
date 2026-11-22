@@ -164,7 +164,7 @@ function PaymentDetail({ paymentId, initial, today, onClose }: { paymentId: stri
 							icon={<Send className="size-4" />}
 							onClick={() => {
 								onClose();
-								shell.send({ paymentId: payment.id, recipient: payment.recipient, amountZat: payment.amountZat, memo: payment.memo, note: payment.note, tags: payment.tags });
+								shell.send({ paymentId: payment.id, recipient: payment.recipient, amountZat: payment.amountZat, memo: payment.memo, note: payment.note, tags: payment.tags, scheduleId: payment.status === "scheduled" ? payment.scheduleId : null, dueDate: payment.dueDate });
 							}}
 						>
 							{payment.status === "scheduled" ? "Review & pay" : "Send again"}
@@ -282,11 +282,14 @@ function ChainDetail({ item, onClose }: { item: Exclude<ActivityItem, { kind: "p
 	const [tags, setTags] = useState(data.tags);
 	const incoming = item.kind === "incoming" ? item.incoming : null;
 	return (
-		<Drawer open onClose={onClose} title={incoming ? (incoming.kind === "received" ? "Received" : "Internal transfer") : "Sent outside Zarca"}>
+		<Drawer open onClose={onClose} title={incoming ? (incoming.kind === "received" ? "Received" : incoming.kind === "refund" ? "Swap refund" : "Internal transfer") : "Sent outside Zarca"}>
 			<div className="flex flex-col items-center py-2 text-center">
 				<Zec zat={item.kind === "incoming" ? data.amountZat : `-${data.amountZat}`} sign className={cx("text-[28px] font-semibold tracking-tight", incoming?.kind === "received" && "text-success")} />
 				<div className="mt-1 text-[13px] text-muted">{data.blockTime ? formatDateTime(data.blockTime) : "Awaiting confirmation"}</div>
 			</div>
+			{incoming?.kind === "refund" && (
+				<p className="mt-3 text-center text-xs text-muted">ZEC returned by NEAR Intents for a cross-chain payment that did not complete. It is not counted as revenue.</p>
+			)}
 			{incoming?.kind === "received" && (
 				<p className="mt-3 text-center text-xs text-muted">Zcash shielded payments do not reveal the sender. Add a note to record who it was from.</p>
 			)}

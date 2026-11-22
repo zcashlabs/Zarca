@@ -83,17 +83,18 @@ export function buildCsv(items: readonly ActivityItem[], options: { includeNotes
 			amount = BigInt(i.amountZat);
 			valuation = i.valuation;
 			note = i.note;
-			const internal = i.kind !== "received";
+			const internal = i.kind === "shielding" || i.kind === "change" || i.kind === "other";
 			row = {
 				reference: `tx:${i.txid}`,
 				date: i.blockTime ?? item.at,
-				type: internal ? "internal_transfer" : "receipt",
+				type: i.kind === "refund" ? "refund" : internal ? "internal_transfer" : "receipt",
 				status: i.minedHeight === null ? "pending" : "confirmed",
 				counterparty: null,
 				destination_network: "zcash",
 				destination_asset: "ZEC",
 				address: null,
 				amount_zec: internal ? ZEC(0n) : ZEC(amount),
+				// Refunds return the treasury's own funds: shown as such, never as revenue.
 				fee_zec: internal ? ZEC(amount) : ZEC(0n),
 				net_zec: ZEC(amount),
 				txids: i.txid,

@@ -16,10 +16,13 @@ import { ReceiveModal } from "./Receive";
 
 export type Route = "overview" | "activity" | "contacts" | "reports" | "settings";
 
+/** Opens Send prefilled; scheduled occurrences carry their schedule for skip/cancel actions. */
+export type SendPrefill = Partial<SendDraft> & { scheduleId?: string | null; dueDate?: string | null };
+
 interface ShellActions {
 	session: SessionState;
 	navigate: (route: Route, focus?: string) => void;
-	send: (prefill?: Partial<SendDraft>) => void;
+	send: (prefill?: SendPrefill) => void;
 	receive: () => void;
 	focus: string | null;
 }
@@ -42,7 +45,7 @@ const NAV: { route: Route; label: string; icon: typeof LayoutDashboard }[] = [
 export function Shell({ session }: { session: SessionState }) {
 	const [route, setRoute] = useState<Route>("overview");
 	const [focus, setFocus] = useState<string | null>(null);
-	const [send, setSend] = useState<{ prefill?: Partial<SendDraft>; key: number } | null>(null);
+	const [send, setSend] = useState<{ prefill?: SendPrefill; key: number } | null>(null);
 	const [receive, setReceive] = useState(false);
 	const sync = useSync();
 	const wallet = session.unlocked!;

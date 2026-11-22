@@ -31,10 +31,14 @@ export function classifyHistory(
 	history: readonly HistoryEntry[],
 	payments: readonly PaymentView[],
 	memos: ReadonlyMap<string, string[]>,
+	receivedAt: ReadonlyMap<string, readonly string[]>,
 	tipHeight: number | null,
 	currency: string,
 ): ChainActivity {
 	const ours = new Set(payments.flatMap((p) => p.attempts.flatMap((a) => a.txids)));
+	// Each cross-chain quote uses a fresh refund address of ours; map it back to its payment.
+	const refundAddresses = new Map<string, string>();
+	for (const p of payments) for (const a of p.attempts) if (a.near?.quote.refundTo) refundAddresses.set(a.near.quote.refundTo, p.id);
 	const { notes, tags } = store.read((db) => annotationMaps(db));
 	const valuations = valuationMap(store, currency);
 	const incoming: IncomingView[] = [];
@@ -59,8 +63,10 @@ export function classifyHistory(
 				tags: tags.get(subject) ?? [],
 				valuation: valuations.get(subject) ?? null,
 				kind: entry.isShielding ? "shielding" : "change",
+				refundFor: null,
 			});
 		} else if (entry.balanceDelta > 0n) {
+			const refundFor = (receivedAt.get(txid) ?? []).map((a) => refundAddresses.get(a)).find(Boolean) ?? null;
 			incoming.push({
 				txid,
 				amountZat: entry.balanceDelta.toString(),
@@ -71,7 +77,8 @@ export function classifyHistory(
 				note: notes.get(subject) ?? null,
 				tags: tags.get(subject) ?? [],
 				valuation: valuations.get(subject) ?? null,
-				kind: "received",
+				kind: refundFor ? "refund" : "received",
+				refundFor,
 			});
 		} else if (entry.balanceDelta < 0n) {
 			const fee = entry.fee;

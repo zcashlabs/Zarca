@@ -32,6 +32,8 @@ export interface Session {
 	readonly engine: Engine;
 	readonly payments: PaymentService;
 	readonly memos: Map<string, string[]>;
+	/** txid -> our receiving addresses, used to recognize refunds. */
+	readonly receivedAt: Map<string, string[]>;
 	/** Exchange rates for this wallet's network (none on testnet). */
 	readonly rates: RateService;
 	settings: WalletSettings;
@@ -222,6 +224,7 @@ export class Controller {
 			store,
 			engine,
 			memos,
+			receivedAt: new Map(),
 			rates,
 			settings,
 			dataKey,
@@ -289,6 +292,7 @@ export class Controller {
 				session.store.close();
 				wipe(session.dataKey);
 				session.memos.clear();
+				session.receivedAt.clear();
 				this.emitSession();
 			}
 		}

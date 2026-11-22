@@ -117,7 +117,8 @@ export class PaymentService {
 				proposal = await engine.propose({ to: draft.recipient.address, amount, memo, idempotencyKey: attemptId });
 			}
 		} else {
-			const refundTo = await engine.receiveAddress();
+			// A fresh address per quote lets refunds be recognized and never counted as revenue.
+			const refundTo = await engine.receiveAddress(true);
 			if (draft.amountZat === "max") {
 				// Size the deposit by estimating the fee against our own address, then quote the remainder.
 				const estimate = await this.proposeMax(spendable, refundTo, null, `${attemptId}-estimate`);

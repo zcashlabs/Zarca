@@ -21,7 +21,7 @@ test("bookkeeping rows exclude tags, unsent occurrences and notes unless asked",
 			attempts: [{ id: "a", status: "confirmed", operationId: "o", txids: ["tx1"], feeZat: "10000", error: null, near: null, createdAt: "", updatedAt: "" }],
 			valuation: { currency: "USD", rate: "100", source: "CoinGecko", observedAt: "2026-01-02T00:00:00Z" } } },
 		{ kind: "payment", at: "2026-02-01T00:00:00Z", payment: { ...base, id: "p2", status: "scheduled", amountZat: "1", feeZat: null, settledAt: null, attempts: [], valuation: null } },
-		{ kind: "incoming", at: "2026-01-01T00:00:00Z", incoming: { txid: "tx0", amountZat: "500000000", minedHeight: 10, blockTime: "2026-01-01T00:00:00Z", confirmations: 5, memos: [], note: null, tags: ["Grant"], valuation: null, kind: "received" } },
+		{ kind: "incoming", at: "2026-01-01T00:00:00Z", incoming: { txid: "tx0", amountZat: "500000000", minedHeight: 10, blockTime: "2026-01-01T00:00:00Z", confirmations: 5, memos: [], note: null, tags: ["Grant"], valuation: null, kind: "received", refundFor: null } },
 	];
 	const csv = buildCsv(items, { includeNotes: false });
 	const lines = csv.trim().split("\r\n");
