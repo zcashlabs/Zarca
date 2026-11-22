@@ -39,4 +39,4 @@ npm run build
 mkdir -p "$root/vendor"
 out="$(npm pack --silent --pack-destination "$root/vendor" | tail -1)"
 mv "$root/vendor/$out" "$root/vendor/zcashlabs-zcash.js.tgz"
-sha256sum "$root/vendor/zcashlabs-zcash.js.tgz"
+if command -v sha256sum >/dev/null; then sha256sum "$root/vendor/zcashlabs-zcash.js.tgz"; else shasum -a 256 "$root/vendor/zcashlabs-zcash.js.tgz"; fi

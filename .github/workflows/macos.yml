@@ -1,0 +1,50 @@
+name: macOS
+
+# Investigation and regression job for macOS support (#3).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/macos.yml"
+      - "scripts/vendor-zcashjs.sh"
+      - "tests/platform/**"
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - name: Cache zcash.js build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zarca
+            ~/.cargo
+            ~/.rustup
+          key: zcashjs-macos-${{ runner.arch }}-${{ hashFiles('scripts/vendor-zcashjs.sh') }}
+      - name: Build vendored zcash.js
+        run: bash scripts/vendor-zcashjs.sh
+      - run: bun install
+      - name: Unit tests
+        run: bun test tests/unit
+      - name: Engine smoke test under Bun
+        run: bun tests/platform/smoke.ts
+        continue-on-error: true
+      - name: Build the Electrobun app
+        run: |
+          npx --yes electrobun@2.0.7 prepare
+          ~/.hutch/bin/hutch pm exec -- vite build
+          ~/.hutch/bin/hutch electrobun build --env=canary
+        continue-on-error: true
+      - name: List artifacts
+        if: always()
+        run: ls -la artifacts build 2>/dev/null || true
