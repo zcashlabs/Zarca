@@ -26,6 +26,7 @@ if [ ! -d "$work/.git" ]; then
 fi
 cd "$work"
 git fetch --quiet origin main
+git reset --quiet --hard   # discard the previous run's native-source.json edit
 git checkout --quiet --detach "$BASE"
 for pull in "${PULLS[@]}"; do
   number="${pull%%:*}" commit="${pull##*:}"
@@ -34,6 +35,9 @@ for pull in "${PULLS[@]}"; do
   case "$resolved" in "$commit"*) ;; *) echo "PR #$number head moved to $resolved (pinned $commit)" >&2; exit 1 ;; esac
   git -c user.name=zarca -c user.email=zarca@localhost merge --quiet --no-edit "$resolved"
 done
+# Native wallet bindings: v0.1.1 plus the macOS storage host (jp4g/zakura-wasm-bindings#41).
+NATIVE_REVISION="967f8fc7cded6f1bcc61a7464b273ca09d41437a"
+printf '{\n  "repository": "https://github.com/jp4g/zakura-wasm-bindings.git",\n  "revision": "%s"\n}\n' "$NATIVE_REVISION" > scripts/native-source.json
 npm ci --silent
 npm run build
 mkdir -p "$root/vendor"

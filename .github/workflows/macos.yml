@@ -48,8 +48,8 @@ jobs:
       - name: Build the Electrobun app
         run: |
           npx --yes electrobun@2.0.7 prepare
-          ~/.hutch/bin/hutch pm exec -- vite build
-          ~/.hutch/bin/hutch electrobun build --env=canary
+          bunx vite build
+          npx --yes electrobun@2.0.7 build --env=canary
         continue-on-error: true
       - name: List artifacts
         if: always()
