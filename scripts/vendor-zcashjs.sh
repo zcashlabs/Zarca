@@ -9,11 +9,10 @@
 set -euo pipefail
 
 REPO="https://github.com/zcashlabs/zcashjs.git"
-BASE="cb1b706caf2c30e49fb4b9db64730e5d1dc6f518"   # main: chore: prepare 0.1.2 NU7 release (#24)
+BASE="7d1af080f04abcab46a66a0e1dd3f91d408a93dd"   # main: encryption at rest (#31), retained-operation errors (#37), macOS/Windows storage (#38)
 # Pull requests merged on top of BASE, as "number:commit".
 PULLS=(
   "28:5a10a36"   # accept lightwallet-protocol v0.6.0
-  "31:0ac571c"   # authenticated at-rest encryption for Node filesystem storage
 )
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,7 +25,7 @@ if [ ! -d "$work/.git" ]; then
 fi
 cd "$work"
 git fetch --quiet origin main
-git reset --quiet --hard   # discard the previous run's native-source.json edit
+git reset --quiet --hard   # discard any local edits from earlier runs
 git checkout --quiet --detach "$BASE"
 for pull in "${PULLS[@]}"; do
   number="${pull%%:*}" commit="${pull##*:}"
@@ -35,12 +34,14 @@ for pull in "${PULLS[@]}"; do
   case "$resolved" in "$commit"*) ;; *) echo "PR #$number head moved to $resolved (pinned $commit)" >&2; exit 1 ;; esac
   git -c user.name=zarca -c user.email=zarca@localhost merge --quiet --no-edit "$resolved"
 done
-# Native wallet bindings: v0.1.1 plus the macOS storage host (jp4g/zakura-wasm-bindings#41).
-NATIVE_REVISION="0019927e484128593f693236d240fbbe23386c45"
-printf '{\n  "repository": "https://github.com/jp4g/zakura-wasm-bindings.git",\n  "revision": "%s"\n}\n' "$NATIVE_REVISION" > scripts/native-source.json
+# BASE pins the native wallet bindings (scripts/native-source.json), including the
+# Linux, macOS and Windows Node storage host (jp4g/zakura-wasm-bindings#41, #43).
 npm ci --silent
 npm run build
 mkdir -p "$root/vendor"
 out="$(npm pack --silent --pack-destination "$root/vendor" | tail -1)"
 mv "$root/vendor/$out" "$root/vendor/zcashlabs-zcash.js.tgz"
 if command -v sha256sum >/dev/null; then sha256sum "$root/vendor/zcashlabs-zcash.js.tgz"; else shasum -a 256 "$root/vendor/zcashlabs-zcash.js.tgz"; fi
+# The package name and version do not change between vendor builds, so installers
+# keep the previous copy; drop it so the next install unpacks this build.
+rm -rf "$root/node_modules/@zcashlabs/zcash.js"
