@@ -533,7 +533,8 @@ export class PaymentService {
 				? {
 						...near,
 						providerStatus: report.status,
-						destinationTxids: report.destinationTxids.length ? report.destinationTxids : near.destinationTxids,
+						// Only a successful swap has delivery hashes; while refunding, the provider reports the refund there.
+						destinationTxids: report.status !== "SUCCESS" ? [] : report.destinationTxids.length ? report.destinationTxids : near.destinationTxids,
 						refundTxids: report.refundTxids.length ? report.refundTxids : near.refundTxids,
 						checkedAt: now(),
 					}
