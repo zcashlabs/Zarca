@@ -1,0 +1,111 @@
+name: Windows
+
+# Packaging and runtime checks for Windows support (#4).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows.yml"
+      - "scripts/vendor-zcashjs.sh"
+      - "electrobun.config.ts"
+      - "src/bun/**"
+      - "tests/platform/**"
+
+permissions:
+  contents: read
+
+jobs:
+  vendor:
+    name: Build vendored zcash.js (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - name: Cache zcash.js build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zarca
+            ~/.cargo
+            ~/.rustup
+          key: zcashjs-${{ hashFiles('scripts/vendor-zcashjs.sh') }}
+      # The native build is Linux-only; the package (WASM + JS) is portable.
+      - run: bash scripts/vendor-zcashjs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zcashjs-vendor
+          path: vendor/zcashlabs-zcash.js.tgz
+          retention-days: 3
+
+  windows:
+    name: Windows runtime and package
+    needs: vendor
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - uses: actions/download-artifact@v4
+        with:
+          name: zcashjs-vendor
+          path: vendor
+      - run: bun install
+      - name: Unit tests
+        run: bun test tests/unit
+      - name: Engine smoke test under Bun (encrypted filesystem wallet, testnet sync)
+        run: bun tests/platform/smoke.ts
+      - name: Build the Electrobun app
+        run: |
+          npx --yes electrobun@2.0.7 prepare
+          bunx vite build
+          npx --yes electrobun@2.0.7 build --env=canary
+      - name: Install and launch the packaged app
+        run: |
+          # The setup executable reads its payload (.tar.zst + metadata) beside it.
+          setup=$(find build/canary-win-x64 -maxdepth 1 -iname '*Setup*.exe' | head -1)
+          echo "setup: $setup"
+          test -n "$setup"
+          # The installer stays open after it finishes, so run it in the background,
+          # wait for its completion line, then stop it.
+          "$setup" > "$RUNNER_TEMP/setup.log" 2>&1 &
+          for i in $(seq 180); do grep -q "Installation completed" "$RUNNER_TEMP/setup.log" && break; sleep 1; done
+          taskkill //F //IM "$(basename "$setup")" //T >/dev/null 2>&1 || true
+          tail -3 "$RUNNER_TEMP/setup.log"
+          grep -q "Installation completed" "$RUNNER_TEMP/setup.log"
+          app="$LOCALAPPDATA/dev.zcashlabs.zarca/canary/app"
+          launcher="$app/bin/launcher.exe"
+          test -f "$launcher"
+          test -f "$LOCALAPPDATA/../Roaming/Microsoft/Windows/Start Menu/Programs/Zarca (Canary).lnk"
+          export ZARCA_DATA_DIR="$RUNNER_TEMP/zarca-launch"
+          "$launcher" > "$RUNNER_TEMP/launch.log" 2>&1 &
+          # The registry creates the data directory when the Bun main process starts.
+          for i in $(seq 120); do [ -d "$ZARCA_DATA_DIR/wallets" ] && break; sleep 1; done
+          sleep 10
+          tasklist | grep -i -E 'launcher|bun|msedgewebview2' | head || true
+          cat "$RUNNER_TEMP/launch.log" | tail -40 || true
+          test -d "$ZARCA_DATA_DIR/wallets"
+          # Still running ten seconds after startup (no crash on window/webview creation).
+          tasklist | grep -qi 'bun.exe'
+          taskkill //F //IM launcher.exe //T >/dev/null 2>&1 || true
+          taskkill //F //IM bun.exe //T >/dev/null 2>&1 || true
+      - name: List build output
+        if: always()
+        run: |
+          ls -la artifacts 2>/dev/null || true
+          find build -maxdepth 4 | head -40
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: zarca-windows-canary
+          path: artifacts
+          retention-days: 7
