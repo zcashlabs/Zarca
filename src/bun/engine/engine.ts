@@ -85,6 +85,8 @@ export class Engine {
 				network,
 				storage: { kind: "node-filesystem", path: options.path, encryptionKey: options.encryptionKey },
 				recovery: { mode: "online", timeoutMs: 15_000 },
+				// watchSync holds a job for its lifetime; reconciliation and view refreshes overlap.
+				runtime: { maxQueuedJobs: 32 },
 				...(options.policy === "migration" ? { transactionPolicy: MIGRATION_POLICY } : {}),
 			});
 		} catch (error) {
@@ -253,7 +255,24 @@ export class Engine {
 		}
 	}
 
-	async balance(): Promise<{ view: BalanceView; raw: WalletBalance }> {
+	private inflight = new Map<string, Promise<unknown>>();
+	/**
+	 * Concurrent identical reads share one wallet call. Every change event makes each
+	 * open view refetch at once, and the wallet admits a bounded number of jobs.
+	 */
+	private shared<T>(key: string, load: () => Promise<T>): Promise<T> {
+		const existing = this.inflight.get(key) as Promise<T> | undefined;
+		if (existing) return existing;
+		const promise = load().finally(() => this.inflight.delete(key));
+		this.inflight.set(key, promise);
+		return promise;
+	}
+
+	balance(): Promise<{ view: BalanceView; raw: WalletBalance }> {
+		return this.shared("balance", () => this.loadBalance());
+	}
+
+	private async loadBalance(): Promise<{ view: BalanceView; raw: WalletBalance }> {
 		const raw = await this.wallet.getBalance({ accountId: this.accountId });
 		const a = raw.amounts;
 		if (!a) {
@@ -280,7 +299,11 @@ export class Engine {
 		};
 	}
 
-	async history(): Promise<HistoryEntry[]> {
+	history(): Promise<HistoryEntry[]> {
+		return this.shared("history", () => this.loadHistory());
+	}
+
+	private async loadHistory(): Promise<HistoryEntry[]> {
 		const out: HistoryEntry[] = [];
 		let cursor: string | undefined;
 		for (let attempt = 0; attempt < 3; attempt++) {
