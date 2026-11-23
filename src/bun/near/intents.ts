@@ -193,7 +193,7 @@ export class NearIntents {
 		const refunded = details.refundedAmount && details.refundedAmount !== "0" ? details.refundedAmount : null;
 		return {
 			status: response.status,
-			destinationTxids: response.status === "REFUNDED" ? [] : hashes(details.destinationChainTxHashes),
+			destinationTxids: response.status === "SUCCESS" ? hashes(details.destinationChainTxHashes) : [],
 			refundTxids: response.status === "REFUNDED" ? hashes(details.destinationChainTxHashes) : [],
 			originTxids: hashes(details.originChainTxHashes),
 			refundedAmount: refunded,

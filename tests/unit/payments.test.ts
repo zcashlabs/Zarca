@@ -356,4 +356,28 @@ describe("reconciliation", () => {
 		// A refunded payment may be sent again.
 		await expect(service.prepare({ ...draft, paymentId: result[1]!.id, memo: null })).resolves.toBeDefined();
 	});
+
+	test("a refund hash reported while processing is never kept as a delivery", async () => {
+		const id = store.write((db) => {
+			const paymentId = createPayment(db, { recipient: { ...recipient, route: "near-intents", chain: "eth", asset: "nep141:eth", assetSymbol: "ETH", address: "0x" + "1".repeat(40) }, amountZat: "5", memo: null, dueDate: null, status: "pending", note: null, tags: [] });
+			const attempt = createAttempt(db, paymentId, {
+				operationId: "near-r",
+				txids: ["f-r"],
+				near: { quote: { depositAddress: "dep-r", amountIn: "5", amountOut: "1", amountOutFormatted: "1", minAmountOut: "1", assetSymbol: "ETH", deadline: "", quotedAt: "", timeEstimateSeconds: null, feeUsd: null, refundTo: "utest-own" }, providerStatus: null, destinationTxids: [], refundTxids: [], checkedAt: null },
+			});
+			updateAttempt(db, attempt, "submitted");
+			engine.ops.set("near-r", { operationId: "near-r", phase: "complete", steps: [{ txid: "f-r", attempts: [{ outcome: "acknowledged" }], inclusion: { height: 990, confirmations: 10 }, observation: { state: "mined" }, expiry: { reached: false } }] });
+			return paymentId;
+		});
+		// Mainnet: while refunding, the provider lists the refund under destinationChainTxHashes.
+		let status = "PROCESSING";
+		near.status = async () => ({ status, destinationTxids: ["refund-tx"], refundTxids: status === "REFUNDED" ? ["refund-tx"] : [], originTxids: [], refundedAmount: null, refundReason: "QUOTE_EXPIRED", amountOutFormatted: null });
+		await service.reconcile();
+		status = "REFUNDED";
+		await service.reconcile();
+		const payment = store.read((db) => getPayment(db, id));
+		expect(payment.status).toBe("refunded");
+		expect(payment.attempts[0]!.near!.destinationTxids).toEqual([]);
+		expect(payment.attempts[0]!.near!.refundTxids).toEqual(["refund-tx"]);
+	});
 });
