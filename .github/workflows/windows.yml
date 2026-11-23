@@ -74,15 +74,21 @@ jobs:
           setup=$(find build/canary-win-x64 -maxdepth 1 -iname '*Setup*.exe' | head -1)
           echo "setup: $setup"
           test -n "$setup"
+          "$setup" > "$RUNNER_TEMP/setup.log" 2>&1
+          tail -3 "$RUNNER_TEMP/setup.log"
+          app="$LOCALAPPDATA/dev.zcashlabs.zarca/canary/app"
+          launcher="$app/bin/launcher.exe"
+          test -f "$launcher"
+          test -f "$LOCALAPPDATA/../Roaming/Microsoft/Windows/Start Menu/Programs/Zarca (Canary).lnk"
           export ZARCA_DATA_DIR="$RUNNER_TEMP/zarca-launch"
-          "$setup" > "$RUNNER_TEMP/setup.log" 2>&1 &
+          "$launcher" > "$RUNNER_TEMP/launch.log" 2>&1 &
           # The registry creates the data directory when the Bun main process starts.
-          for i in $(seq 180); do [ -d "$ZARCA_DATA_DIR/wallets" ] && break; sleep 1; done
-          sleep 5
-          cat "$RUNNER_TEMP/setup.log" || true
-          tasklist | grep -i -E 'zarca|launcher|bun' || true
-          find "$LOCALAPPDATA" -maxdepth 3 -iname '*zarca*' 2>/dev/null | head || true
+          for i in $(seq 120); do [ -d "$ZARCA_DATA_DIR/wallets" ] && break; sleep 1; done
+          sleep 10
+          tasklist | grep -i -E 'launcher|bun|msedgewebview2' | head || true
+          cat "$RUNNER_TEMP/launch.log" | tail -40 || true
           test -d "$ZARCA_DATA_DIR/wallets"
+          # Still running ten seconds after startup (no crash on window/webview creation).
           tasklist | grep -qi 'bun.exe'
           taskkill //F //IM launcher.exe //T >/dev/null 2>&1 || true
           taskkill //F //IM bun.exe //T >/dev/null 2>&1 || true
