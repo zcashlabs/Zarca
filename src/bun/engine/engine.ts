@@ -325,6 +325,11 @@ export class Engine {
 		}
 	}
 
+	/** Keeps background sync paused while `fn` proposes, signs and broadcasts. Re-entrant. */
+	holdSync<T>(fn: () => Promise<T>): Promise<T> {
+		return this.paused(fn);
+	}
+
 	propose(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
 		return this.paused(() => this.proposeSynced(args));
 	}
@@ -440,6 +445,11 @@ export class Engine {
 
 	operation(operationId: string): Promise<PaymentState | null> {
 		return this.wallet.operations.get({ operationId });
+	}
+
+	/** Finite catch-up to the current tip; callers hold background sync (holdSync). */
+	async catchUp(): Promise<void> {
+		await this.wallet.sync({ signal: AbortSignal.timeout(90_000) });
 	}
 
 	async broadcast(operationId: string): Promise<PaymentState> {

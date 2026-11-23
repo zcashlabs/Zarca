@@ -29,6 +29,19 @@ import type { TreasuryStore } from "../storage/treasury-store";
 
 const REVIEW_TTL_MS = 10 * 60_000;
 const NEAR_SAFETY_MS = 5 * 60_000;
+
+type OperationSteps = { readonly steps: readonly { readonly txid: unknown; readonly attempts: readonly unknown[] }[] } | null;
+/** Some step was handed to the network. Unknown state counts as dispatched. */
+const dispatchedOf = (state: OperationSteps) => state?.steps.some((s) => s.attempts.length > 0) ?? true;
+/**
+ * A signed transaction exists. It can still reach the network (and cannot be
+ * abandoned), so the payment is never "not sent" until it is mined or expires.
+ */
+const signedOf = (state: OperationSteps) => state?.steps.some((s) => s.txid !== null) ?? true;
+const txidsOf = (state: { readonly steps: readonly { readonly txid: unknown }[] }) =>
+	state.steps.map((s) => s.txid).filter((t) => t !== null && t !== undefined).map(String);
+const SIGNED_NOT_SENT =
+	"Signed but not confirmed as broadcast. Zarca keeps watching it; it can be sent again only after it expires unmined.";
 const REQUIRED_CONFIRMATIONS = 3;
 
 interface Review {
@@ -239,6 +252,11 @@ export class PaymentService {
 			// Blocks arrive every 25 s and proposals must match the current tip, so the
 			// reviewed proposal is rebuilt with identical terms immediately before signing.
 			// A different fee means different terms: the user must review again.
+			const signingSeed = seed;
+			// Background sync stays paused from the rebuild through signing and broadcast.
+			// Resuming it in between lets the watcher observe a new tip (every ~25 s), after
+			// which the wallet is no longer fresh and refuses to send (SYNC_REQUIRED).
+			return await this.deps.engine.holdSync(async () => {
 			let proposal = await this.rebuild(review, 0);
 
 			// Persist intent and attempt before anything can reach the network.
@@ -284,7 +302,7 @@ export class PaymentService {
 			try {
 			for (let attempt = 0; ; attempt++) {
 				try {
-					const pending = await this.deps.engine.execute(proposal, seed);
+					const pending = await this.deps.engine.execute(proposal, signingSeed);
 					const snapshot = await pending.snapshot();
 					const txids = snapshot.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String);
 					this.deps.store.write((db) => {
@@ -295,9 +313,28 @@ export class PaymentService {
 					break;
 				} catch (error) {
 					const state = await this.deps.engine.operation(proposal.operationId).catch(() => null);
-					const dispatched = state?.steps.some((s) => s.attempts.length > 0) ?? true;
-					if (attempt < 2 && !dispatched && isZcashError(error) && error.code === "STALE_PROPOSAL") {
-						// A block arrived between proposal and signing; nothing left the wallet.
+					const dispatched = dispatchedOf(state);
+					const signed = signedOf(state);
+					if (attempt < 2 && !dispatched && signed && isZcashError(error) && error.code === "SYNC_REQUIRED" && this.quoteStillSafe(near)) {
+						// Signed, then held back because a new tip arrived. The user authorized
+						// exactly these bytes: catch up and dispatch them. Never re-sign.
+						try {
+							await this.deps.engine.catchUp();
+							const sent = await this.deps.engine.broadcast(proposal.operationId);
+							const txids = txidsOf(sent);
+							this.deps.store.write((db) => {
+								updateAttempt(db, review.attemptId, "submitted", { txids, error: null });
+								setPaymentStatus(db, paymentId, "pending");
+							});
+							if (near && txids[0]) void this.deps.near.notifyDeposit(near.depositAddress, txids[0]);
+						} catch (broadcastError) {
+							await this.recordExecutionFailure(review.attemptId, paymentId, proposal.operationId, broadcastError);
+						}
+						break;
+					}
+					if (attempt < 2 && !dispatched && !signed && isZcashError(error) && (error.code === "STALE_PROPOSAL" || error.code === "SYNC_REQUIRED")) {
+						// A block arrived between proposal and signing; nothing was signed.
+						// Rebuilding catches up first (Engine.propose), then re-checks the fee.
 						await this.deps.engine.abandon(proposal.operationId);
 						try {
 							proposal = await this.rebuild(review, attempt + 1);
@@ -317,10 +354,16 @@ export class PaymentService {
 			}
 			this.deps.changed();
 			return this.deps.store.read((db) => getPayment(db, paymentId, this.deps.currency()));
+			});
 		} finally {
 			seed?.fill(0);
 			this.authorizing = false;
 		}
+	}
+
+	/** A NEAR deposit must land well before the quote deadline; plain payments have no deadline. */
+	private quoteStillSafe(near: NearQuoteView | null): boolean {
+		return !near || Date.now() < Date.parse(near.deadline) - NEAR_SAFETY_MS;
 	}
 
 	/** Re-proposes the reviewed terms; refuses if the fee (and so the total debit) changed. */
@@ -348,20 +391,21 @@ export class PaymentService {
 		} catch {
 			state = null;
 		}
-		const dispatched = state?.steps.some((s) => s.attempts.length > 0) ?? true;
+		const dispatched = dispatchedOf(state);
+		const signed = signedOf(state);
 		const allRejected = state?.steps.every((s) => s.attempts.length > 0 && s.attempts.every((a) => a.outcome === "rejected")) ?? false;
-		const txids = state?.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String) ?? [];
+		const txids = state ? txidsOf(state) : [];
 		this.deps.store.write((db) => {
-			if (dispatched && !allRejected) {
-				// Something may have reached the network: never allow a blind retry.
-				updateAttempt(db, attemptId, "unknown", { error: described.message, txids });
+			if ((dispatched || signed) && !allRejected) {
+				// Something may reach the network: never allow a blind retry.
+				updateAttempt(db, attemptId, "unknown", { error: dispatched ? described.message : `${SIGNED_NOT_SENT} (${described.message})`, txids });
 				setPaymentStatus(db, paymentId, "unknown");
 			} else {
 				updateAttempt(db, attemptId, "failed", { error: described.message, txids });
 				setPaymentStatus(db, paymentId, "failed");
 			}
 		});
-		if (!dispatched) await this.deps.engine.abandon(operationId);
+		if (!dispatched && !signed) await this.deps.engine.abandon(operationId);
 	}
 
 	// ---- Reconciliation ----
@@ -402,14 +446,25 @@ export class PaymentService {
 		const state = await this.observe(attempt.operationId);
 		if (!state) return this.reconcileFromChain(attempt, before);
 		const txids = state.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String);
-		const dispatched = state.steps.some((s) => s.attempts.length > 0);
+		const dispatched = dispatchedOf(state);
+		const signed = signedOf(state);
 		const mined = state.steps.length > 0 && state.steps.every((s) => s.inclusion !== null);
 		const confirmed = state.phase === "complete" || (mined && state.steps.every((s) => (s.inclusion?.confirmations ?? 0) >= REQUIRED_CONFIRMATIONS));
 		const expired = state.steps.some((s) => s.inclusion === null && s.expiry.reached === true);
 		const rejected = dispatched && state.steps.every((s) => s.attempts.length > 0 && s.attempts.every((a) => a.outcome === "rejected"));
 
-		if (attempt.status === "preparing" && !dispatched) {
-			// Crashed between persisting the intent and sending: nothing left the wallet.
+		if (attempt.status === "preparing" && !dispatched && signed && !expired && !mined) {
+			// Signed but never handed to the network (crash or held-back broadcast). The
+			// transaction cannot be abandoned; block retries until it is mined or expires.
+			store.write((db) => {
+				updateAttempt(db, attemptId, "unknown", { txids, error: SIGNED_NOT_SENT });
+				setPaymentStatus(db, attempt.paymentId, "unknown");
+			});
+			return true;
+		}
+
+		if (attempt.status === "preparing" && !dispatched && !signed) {
+			// Crashed between persisting the intent and signing: nothing left the wallet.
 			await engine.abandon(attempt.operationId);
 			store.write((db) => {
 				updateAttempt(db, attemptId, "failed", { error: "Zarca stopped before this payment was sent. Nothing was broadcast." });
@@ -419,6 +474,8 @@ export class PaymentService {
 		}
 
 		if (attempt.near) {
+			// A held-back funding transaction stays unknown until it is mined or expires.
+			if (!dispatched && signed && !expired && !mined) return false;
 			return this.reconcileNear(attempt, state, { txids, mined, confirmed, expired, rejected }, before);
 		}
 
