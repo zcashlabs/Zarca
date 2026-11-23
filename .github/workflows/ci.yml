@@ -25,6 +25,24 @@ jobs:
           bun install --no-save
       - run: bun test tests/unit
 
+  unit-windows:
+    name: Unit tests (Windows)
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - name: Install dependencies without the vendored zcash.js
+        run: |
+          jq 'del(.dependencies["@zcashlabs/zcash.js"])' package.json > package.ci.json
+          mv package.ci.json package.json
+          bun install --no-save
+      - run: bun test tests/unit
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-24.04
