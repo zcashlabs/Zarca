@@ -1,3 +1,4 @@
+import { chainName } from "../../shared/chains";
 import { useEffect, useState } from "react";
 import { CalendarX, CheckCircle2, CircleDashed, RefreshCw, Send, SkipForward, XCircle } from "lucide-react";
 import type { ActivityItem, AttemptView, PaymentView, ValuationView } from "../../shared/types";
@@ -177,7 +178,7 @@ function PaymentDetail({ paymentId, initial, today, onClose }: { paymentId: stri
 				<Zec zat={payment.amountZat} className="text-[28px] font-semibold tracking-tight" />
 				<div className="mt-1 text-[13px] text-muted">
 					to {r.contactName ?? "address"}
-					{r.route === "near-intents" && ` · paid in ${r.assetSymbol} on ${r.chain.toUpperCase()}`}
+					{r.route === "near-intents" && ` · paid in ${r.assetSymbol} on ${chainName(r.chain)}`}
 				</div>
 				{payment.dueDate && <div className="mt-1 text-xs text-muted">Due {formatDate(payment.dueDate)}</div>}
 			</div>
@@ -200,7 +201,7 @@ function PaymentDetail({ paymentId, initial, today, onClose }: { paymentId: stri
 				<dl className="divide-y divide-border rounded-xl border border-border px-3.5">
 					{r.contactName && <KeyValue label="Contact">{r.contactName}</KeyValue>}
 					{r.destinationLabel && <KeyValue label="Destination">{r.destinationLabel}</KeyValue>}
-					<KeyValue label="Network">{r.route === "zcash" ? "Zcash" : `${r.chain.toUpperCase()} via NEAR Intents`}</KeyValue>
+					<KeyValue label="Network">{r.route === "zcash" ? "Zcash" : `${chainName(r.chain)} via NEAR Intents`}</KeyValue>
 					{r.route === "near-intents" && <KeyValue label="Asset">{r.assetSymbol}</KeyValue>}
 					<KeyValue label="Address"><span className="flex items-start justify-end gap-1"><Mono className="text-right">{r.address}</Mono><CopyButton text={r.address} /></span></KeyValue>
 				</dl>

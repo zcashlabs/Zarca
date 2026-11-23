@@ -1,3 +1,4 @@
+import { chainName } from "../../shared/chains";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ChevronDown, Globe2, Search, ShieldCheck, Shuffle, X } from "lucide-react";
 import type { AssetView, Contact, RecipientSnapshot } from "../../shared/types";
@@ -93,7 +94,7 @@ export function RecipientPicker({ value, onChange, network }: {
 						>
 							{contact.destinations.map((d) => (
 								<option key={d.id} value={d.id}>
-									{d.label} · {d.route === "zcash" ? "Zcash" : `${d.assetSymbol} on ${d.chain.toUpperCase()}`}
+									{d.label} · {d.route === "zcash" ? "Zcash" : `${d.assetSymbol} on ${chainName(d.chain)}`}
 								</option>
 							))}
 						</select>
@@ -211,9 +212,9 @@ export function AssetSelect({ value, onChange }: { value: string | null; onChang
 		<Select value={value ?? ""} onChange={(e) => { const a = assets?.find((x) => x.assetId === e.target.value); if (a) onChange(a); }} disabled={!assets}>
 			<option value="" disabled>{assets ? "Choose asset and network" : "Loading assets…"}</option>
 			{chains.map((chain) => (
-				<optgroup key={chain} label={chain.toUpperCase()}>
+				<optgroup key={chain} label={chainName(chain)}>
 					{assets!.filter((a) => a.chain === chain).map((a) => (
-						<option key={a.assetId} value={a.assetId}>{a.symbol} on {chain.toUpperCase()}</option>
+						<option key={a.assetId} value={a.assetId}>{a.symbol} on {chainName(chain)}</option>
 					))}
 				</optgroup>
 			))}
@@ -236,7 +237,7 @@ function CrossChainFields({ value, onChange }: { value: RecipientSnapshot | null
 			<Field label="Recipient receives">
 				<AssetSelect value={asset?.assetId ?? null} onChange={setAsset} />
 			</Field>
-			<Field label={`Recipient ${asset ? asset.chain.toUpperCase() : ""} address`}>
+			<Field label={`Recipient ${asset ? chainName(asset.chain) : ""} address`}>
 				<Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Destination address" spellCheck={false} className="font-mono text-[13px]" />
 			</Field>
 			<p className="flex items-start gap-1.5 text-xs text-muted">
