@@ -70,10 +70,9 @@ jobs:
           npx --yes electrobun@2.0.7 build --env=canary
       - name: Install and launch the packaged app
         run: |
-          mkdir -p "$RUNNER_TEMP/setup"
-          unzip -q artifacts/*Setup*.zip -d "$RUNNER_TEMP/setup"
-          find "$RUNNER_TEMP/setup" -maxdepth 3 | head -20
-          setup=$(find "$RUNNER_TEMP/setup" -iname '*.exe' | head -1)
+          # The setup executable reads its payload (.tar.zst + metadata) beside it.
+          setup=$(find build/canary-win-x64 -maxdepth 1 -iname '*Setup*.exe' | head -1)
+          echo "setup: $setup"
           test -n "$setup"
           export ZARCA_DATA_DIR="$RUNNER_TEMP/zarca-launch"
           "$setup" > "$RUNNER_TEMP/setup.log" 2>&1 &
