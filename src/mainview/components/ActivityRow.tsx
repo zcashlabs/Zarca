@@ -1,3 +1,4 @@
+import { chainName } from "../../shared/chains";
 import type { ActivityItem } from "../../shared/types";
 import { formatDate, formatShortDate, shortAddress } from "../lib/format";
 import { ActivityIcon, FiatHint, PaymentStatusBadge, Zec } from "./domain";
@@ -22,7 +23,7 @@ export function ActivityRow({ item, today, onOpen, rate, currency, compact }: {
 		icon = p.recipient.contactName ? <Avatar name={p.recipient.contactName} size={36} /> : <ActivityIcon kind={p.recipient.route === "near-intents" ? "swap" : p.scheduleId ? "recurring" : "out"} />;
 		title = name;
 		subtitle = [
-			p.recipient.route === "near-intents" ? `${p.recipient.assetSymbol ?? "Asset"} on ${p.recipient.chain.toUpperCase()}` : p.recipient.destinationLabel ?? "Zcash",
+			p.recipient.route === "near-intents" ? `${p.recipient.assetSymbol ?? "Asset"} on ${chainName(p.recipient.chain)}` : p.recipient.destinationLabel ?? "Zcash",
 			p.scheduleId ? "Recurring" : null,
 			p.internal ? "Internal transfer · fee only" : null,
 		].filter(Boolean).join(" · ");

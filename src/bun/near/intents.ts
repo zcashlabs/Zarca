@@ -2,6 +2,7 @@
 // from the treasury to a quote's deposit address; the provider swaps and
 // delivers the destination asset. Funding is not completion: a payment stays
 // pending until the provider reports SUCCESS, and a refund is never shown as paid.
+import { chainName } from "../../shared/chains";
 import type { AssetView, NearQuoteView } from "../../shared/types";
 
 const BASE = "https://1click.chaindefuser.com/v0";
@@ -240,6 +241,6 @@ export function validateForeignAddress(chain: string, address: string): string |
 	const check = checks[chain];
 	if (!address.trim()) return "Enter the recipient address";
 	if (/\s/.test(address)) return "Addresses cannot contain spaces";
-	if (check && !check.test(address)) return `This does not look like a ${chain.toUpperCase()} address`;
+	if (check && !check.test(address)) return `This does not look like an address on ${chainName(chain)}`;
 	return null;
 }

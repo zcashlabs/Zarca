@@ -1,3 +1,4 @@
+import { chainName } from "../../shared/chains";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, Clock, KeyRound, LockKeyhole, Pencil, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
 import type { PaymentView, RecipientSnapshot, SendDraft, SendReview } from "../../shared/types";
@@ -151,8 +152,8 @@ export function SendFlow({ prefill, onClose }: { prefill?: SendPrefill; onClose:
 		<Modal
 			open
 			onClose={close}
-			title={prefill?.paymentId ? "Review scheduled payment" : "Send"}
-			subtitle={prefill?.paymentId ? "You can change this occurrence's amount or memo without changing the schedule." : undefined}
+			title={prefill?.scheduleId ? "Review scheduled payment" : prefill?.paymentId ? "Send again" : "Send"}
+			subtitle={prefill?.scheduleId ? "You can change this occurrence's amount or memo without changing the schedule." : undefined}
 			width={560}
 			footer={
 				<>
@@ -170,7 +171,7 @@ export function SendFlow({ prefill, onClose }: { prefill?: SendPrefill; onClose:
 						<div className="flex items-center gap-3 rounded-xl border border-border bg-surface-2/60 px-3 py-2.5 text-sm">
 							<span className="font-medium">{recipient?.contactName ?? "Address"}</span>
 							<Mono className="text-muted">{shortAddress(recipient!.address)}</Mono>
-							{recipient?.route === "near-intents" && <Badge tone="info">{recipient.assetSymbol} · {recipient.chain.toUpperCase()}</Badge>}
+							{recipient?.route === "near-intents" && <Badge tone="info">{recipient.assetSymbol} · {chainName(recipient.chain)}</Badge>}
 						</div>
 					) : (
 						<RecipientPicker value={recipient} onChange={setRecipient} network={network} />
@@ -252,8 +253,8 @@ function ReviewDetails({ review, currency, onExpired, onRefresh }: { review: Sen
 			</div>
 			<dl className="mt-4 divide-y divide-border rounded-xl border border-border px-4">
 				<KeyValue label="Recipient">{r.contactName ?? "Address"}{r.destinationLabel ? <span className="text-muted"> · {r.destinationLabel}</span> : null}</KeyValue>
-				<KeyValue label={r.route === "near-intents" ? `${r.chain.toUpperCase()} address` : "Zcash address"}><Mono className="text-right">{r.address}</Mono></KeyValue>
-				<KeyValue label="Network & asset">{r.route === "zcash" ? "Zcash · ZEC" : <span>{r.chain.toUpperCase()} · {r.assetSymbol} <span className="text-muted">via NEAR Intents</span></span>}</KeyValue>
+				<KeyValue label={r.route === "near-intents" ? `${chainName(r.chain)} address` : "Zcash address"}><Mono className="text-right">{r.address}</Mono></KeyValue>
+				<KeyValue label="Network & asset">{r.route === "zcash" ? "Zcash · ZEC" : <span>{r.assetSymbol} on {chainName(r.chain)} <span className="text-muted">via NEAR Intents</span></span>}</KeyValue>
 				<KeyValue label={near ? "ZEC converted" : "Recipient receives"}><Zec zat={review.amountZat} /></KeyValue>
 				{near && (
 					<>

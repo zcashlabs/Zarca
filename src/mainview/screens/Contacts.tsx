@@ -1,3 +1,4 @@
+import { chainName } from "../../shared/chains";
 import { useMemo, useRef, useState } from "react";
 import { Download, ImagePlus, Plus, Search, Send, Star, Trash2, Upload, Users } from "lucide-react";
 import type { Contact, ContactInput, Destination } from "../../shared/types";
@@ -66,7 +67,7 @@ export function Contacts() {
 										<div className="truncate text-[13.5px] font-medium">{c.name}</div>
 										<div className="mt-1 flex flex-wrap items-center gap-1.5">
 											{c.destinations.slice(0, 3).map((d) => (
-												<Badge key={d.id} tone={d.route === "zcash" ? "neutral" : "info"}>{d.route === "zcash" ? "ZEC" : `${d.assetSymbol} · ${d.chain.toUpperCase()}`}</Badge>
+												<Badge key={d.id} tone={d.route === "zcash" ? "neutral" : "info"}>{d.route === "zcash" ? "ZEC" : `${d.assetSymbol} · ${chainName(d.chain)}`}</Badge>
 											))}
 											{c.tags.slice(0, 2).map((t) => <Tag key={t}>{t}</Tag>)}
 										</div>
