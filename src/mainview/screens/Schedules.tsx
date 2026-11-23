@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { CalendarClock, CalendarX, Plus, Repeat } from "lucide-react";
 import type { RecipientSnapshot, RecurrenceRule, ScheduleView, Weekday } from "../../shared/types";
 import { describeRule, occurrences } from "../../shared/recurrence";
-import { call } from "../lib/rpc";
+import { call, localChange } from "../lib/rpc";
 import { useAction, useQuery } from "../lib/hooks";
 import { addDaysLocal, formatDate, formatShortDate, parseZecInput, today as localToday } from "../lib/format";
 import { Avatar, Badge, Button, Card, Confirm, cx, Empty, ErrorText, Field, Input, Modal, Select, Skeleton, TagInput, Textarea, useToast } from "../components/ui";
@@ -11,7 +11,7 @@ import { RecipientPicker } from "../components/RecipientPicker";
 import { useShell } from "./Shell";
 
 export function Schedules() {
-	const { data, loading, refresh } = useQuery("schedules.list");
+	const { data, loading } = useQuery("schedules.list");
 	const [creating, setCreating] = useState(false);
 	const [cancelling, setCancelling] = useState<ScheduleView | null>(null);
 	const active = (data ?? []).filter((s) => !s.cancelledAt);
@@ -54,8 +54,8 @@ export function Schedules() {
 					</div>
 				)}
 			</Card>
-			{creating && <ScheduleForm onClose={() => setCreating(false)} onCreated={() => { setCreating(false); void refresh(); }} />}
-			{cancelling && <CancelSchedule schedule={cancelling} onClose={() => { setCancelling(null); void refresh(); }} />}
+			{creating && <ScheduleForm onClose={() => setCreating(false)} onCreated={() => { setCreating(false); localChange(); }} />}
+			{cancelling && <CancelSchedule schedule={cancelling} onClose={() => { setCancelling(null); localChange(); }} />}
 		</>
 	);
 }

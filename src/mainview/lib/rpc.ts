@@ -68,3 +68,12 @@ const ping = () => {
 for (const event of ["pointerdown", "keydown", "wheel", "pointermove"] as const) {
 	window.addEventListener(event, ping, { passive: true, capture: true });
 }
+
+/**
+ * Marks domain data as changed after a mutation made from this view, so every
+ * mounted query refetches (the Bun process only announces sync-driven changes).
+ * Fractional steps never collide with the process's integer revisions.
+ */
+export function localChange() {
+	changeChannel.emit((changeChannel.value ?? 0) + 0.001);
+}
