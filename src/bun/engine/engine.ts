@@ -325,6 +325,11 @@ export class Engine {
 		}
 	}
 
+	/** Keeps background sync paused while `fn` proposes, signs and broadcasts. Re-entrant. */
+	holdSync<T>(fn: () => Promise<T>): Promise<T> {
+		return this.paused(fn);
+	}
+
 	propose(args: { to: string; amount: bigint; memo: string | null; idempotencyKey: string }): Promise<Proposal> {
 		return this.paused(() => this.proposeSynced(args));
 	}

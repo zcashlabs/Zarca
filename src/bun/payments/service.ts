@@ -239,6 +239,11 @@ export class PaymentService {
 			// Blocks arrive every 25 s and proposals must match the current tip, so the
 			// reviewed proposal is rebuilt with identical terms immediately before signing.
 			// A different fee means different terms: the user must review again.
+			const signingSeed = seed;
+			// Background sync stays paused from the rebuild through signing and broadcast.
+			// Resuming it in between lets the watcher observe a new tip (every ~25 s), after
+			// which the wallet is no longer fresh and refuses to send (SYNC_REQUIRED).
+			return await this.deps.engine.holdSync(async () => {
 			let proposal = await this.rebuild(review, 0);
 
 			// Persist intent and attempt before anything can reach the network.
@@ -284,7 +289,7 @@ export class PaymentService {
 			try {
 			for (let attempt = 0; ; attempt++) {
 				try {
-					const pending = await this.deps.engine.execute(proposal, seed);
+					const pending = await this.deps.engine.execute(proposal, signingSeed);
 					const snapshot = await pending.snapshot();
 					const txids = snapshot.steps.map((s) => s.txid).filter((t): t is NonNullable<typeof t> => t !== null).map(String);
 					this.deps.store.write((db) => {
@@ -296,8 +301,9 @@ export class PaymentService {
 				} catch (error) {
 					const state = await this.deps.engine.operation(proposal.operationId).catch(() => null);
 					const dispatched = state?.steps.some((s) => s.attempts.length > 0) ?? true;
-					if (attempt < 2 && !dispatched && isZcashError(error) && error.code === "STALE_PROPOSAL") {
+					if (attempt < 2 && !dispatched && isZcashError(error) && (error.code === "STALE_PROPOSAL" || error.code === "SYNC_REQUIRED")) {
 						// A block arrived between proposal and signing; nothing left the wallet.
+						// Rebuilding catches up first (Engine.propose), then re-checks the fee.
 						await this.deps.engine.abandon(proposal.operationId);
 						try {
 							proposal = await this.rebuild(review, attempt + 1);
@@ -317,6 +323,7 @@ export class PaymentService {
 			}
 			this.deps.changed();
 			return this.deps.store.read((db) => getPayment(db, paymentId, this.deps.currency()));
+			});
 		} finally {
 			seed?.fill(0);
 			this.authorizing = false;

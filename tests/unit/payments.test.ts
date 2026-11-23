@@ -47,6 +47,15 @@ class FakeEngine {
 		this.ops.set(operationId, { operationId, phase: "proposed", steps: [] });
 		return { operationId, totalFee: 10_000n, steps: [{ expiryHeight: 1080 }] };
 	}
+	holdDepth = 0;
+	async holdSync<T>(fn: () => Promise<T>) {
+		this.holdDepth++;
+		try {
+			return await fn();
+		} finally {
+			this.holdDepth--;
+		}
+	}
 	async abandon(operationId: string) {
 		this.abandoned.push(operationId);
 		const op = this.ops.get(operationId);
@@ -193,6 +202,20 @@ describe("stale proposals", () => {
 		expect(payment.attempts).toHaveLength(1);
 		expect(payment.attempts[0]!.operationId).toBe("op-3");
 		expect(engine.abandoned).toEqual(expect.arrayContaining(["op-1", "op-2"]));
+	});
+
+	test("a wallet that fell behind at signing catches up and sends once, with sync held throughout", async () => {
+		let behind = 1;
+		const heldDuringExecute: number[] = [];
+		engine.executeImpl = async () => {
+			heldDuringExecute.push(engine.holdDepth);
+			if (behind-- > 0) throw Object.assign(new Error("behind"), { code: "SYNC_REQUIRED", stage: "proposal", retryable: true });
+		};
+		const payment = await service.authorize((await service.prepare(draft)).reviewId, "pw");
+		expect(payment.status).toBe("pending");
+		expect(payment.attempts).toHaveLength(1);
+		expect(heldDuringExecute).toEqual([1, 1]);
+		expect(engine.holdDepth).toBe(0);
 	});
 
 	test("a changed fee requires a new review and sends nothing", async () => {
