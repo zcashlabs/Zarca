@@ -1,12 +1,14 @@
 import { chainName } from "../../shared/chains";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ChevronDown, Globe2, Search, ShieldCheck, Shuffle, X } from "lucide-react";
 import type { AssetView, Contact, RecipientSnapshot } from "../../shared/types";
 import { call } from "../lib/rpc";
 import { useQuery } from "../lib/hooks";
 import { shortAddress } from "../lib/format";
 import { Avatar, Badge, Field, Input, Select, Spinner } from "./ui";
-import { QrScanner } from "./QrScanner";
+
+// The QR decoder is only needed when scanning.
+const QrScanner = lazy(() => import("./QrScanner").then((m) => ({ default: m.QrScanner })));
 
 type AddressCheck = { valid: boolean; shielded: boolean; transparent: boolean } | null;
 
@@ -175,13 +177,15 @@ export function RecipientPicker({ value, onChange, network }: {
 			)}
 			{mode === "near-intents" && <CrossChainFields value={value} onChange={onChange} />}
 			{scan && (
-				<QrScanner
-					onClose={() => setScan(false)}
-					onResult={(text) => {
-						setScan(false);
-						applyText(text);
-					}}
-				/>
+				<Suspense fallback={null}>
+					<QrScanner
+						onClose={() => setScan(false)}
+						onResult={(text) => {
+							setScan(false);
+							applyText(text);
+						}}
+					/>
+				</Suspense>
 			)}
 		</div>
 	);
