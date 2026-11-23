@@ -30,14 +30,17 @@ await step("memory-wallet-sync", async () => {
 });
 
 await step("encrypted-filesystem-wallet", async () => {
-	const engine = await Engine.open({
+	const options = {
 		path: mkdtempSync(join(tmpdir(), "zarca-smoke-")),
-		network: "testnet",
+		network: "testnet" as const,
 		server: DEFAULT_SERVERS.testnet,
 		encryptionKey: randomKey(),
-	});
-	await engine.close();
-	return "opened and closed";
+	};
+	await (await Engine.open(options)).close();
+	// Reopening an existing database exercises read-only opens and the owner lease
+	// release (a Windows-only failure before jp4g/zakura-wasm-bindings#43).
+	await (await Engine.open(options)).close();
+	return "opened, closed and reopened";
 });
 
 console.log(JSON.stringify(results, null, 2));

@@ -1,0 +1,79 @@
+name: Windows
+
+# Packaging and runtime checks for Windows support (#4).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows.yml"
+      - "scripts/vendor-zcashjs.sh"
+      - "electrobun.config.ts"
+      - "src/bun/**"
+      - "tests/platform/**"
+
+permissions:
+  contents: read
+
+jobs:
+  vendor:
+    name: Build vendored zcash.js (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - name: Cache zcash.js build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/zarca
+            ~/.cargo
+            ~/.rustup
+          key: zcashjs-${{ hashFiles('scripts/vendor-zcashjs.sh') }}
+      # The native build is Linux-only; the package (WASM + JS) is portable.
+      - run: bash scripts/vendor-zcashjs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zcashjs-vendor
+          path: vendor/zcashlabs-zcash.js.tgz
+          retention-days: 3
+
+  windows:
+    name: Windows runtime and package
+    needs: vendor
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+      - uses: actions/download-artifact@v4
+        with:
+          name: zcashjs-vendor
+          path: vendor
+      - run: bun install
+      - name: Unit tests
+        run: bun test tests/unit
+      - name: Engine smoke test under Bun (encrypted filesystem wallet, testnet sync)
+        run: bun tests/platform/smoke.ts
+      - name: Build the Electrobun app
+        run: |
+          npx --yes electrobun@2.0.7 prepare
+          bunx vite build
+          npx --yes electrobun@2.0.7 build --env=canary
+      - name: List build output
+        if: always()
+        run: ls -la artifacts build 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: zarca-windows-canary
+          path: artifacts
+          retention-days: 7
