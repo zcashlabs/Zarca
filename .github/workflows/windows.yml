@@ -68,9 +68,27 @@ jobs:
           npx --yes electrobun@2.0.7 prepare
           bunx vite build
           npx --yes electrobun@2.0.7 build --env=canary
+      - name: Launch the packaged app
+        run: |
+          launcher=$(find build/canary-win-x64 -iname 'launcher.exe' | head -1)
+          echo "launcher: $launcher"
+          test -n "$launcher"
+          export ZARCA_DATA_DIR="$RUNNER_TEMP/zarca-launch"
+          "$launcher" > "$RUNNER_TEMP/launch.log" 2>&1 &
+          # The registry creates the data directory when the Bun main process starts.
+          for i in $(seq 60); do [ -d "$ZARCA_DATA_DIR/wallets" ] && break; sleep 1; done
+          sleep 5
+          tasklist | grep -i -E 'launcher|bun' || true
+          cat "$RUNNER_TEMP/launch.log" || true
+          test -d "$ZARCA_DATA_DIR/wallets"
+          tasklist | grep -qi 'bun.exe'
+          taskkill //F //IM launcher.exe //T >/dev/null 2>&1 || true
+          taskkill //F //IM bun.exe //T >/dev/null 2>&1 || true
       - name: List build output
         if: always()
-        run: ls -la artifacts build 2>/dev/null || true
+        run: |
+          ls -la artifacts 2>/dev/null || true
+          find build -maxdepth 4 | head -40
       - uses: actions/upload-artifact@v4
         if: success()
         with:
