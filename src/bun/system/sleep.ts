@@ -1,22 +1,33 @@
 // Locks the wallet when the computer sleeps.
 //
-// Linux: subscribe to logind's PrepareForSleep signal on the system bus.
-// Everywhere: a monotonic-vs-wall clock gap detector catches suspends the bus
-// signal missed (or platforms without logind).
+// Linux: subscribe to logind's PrepareForSleep signal on the system bus, which
+// locks before the machine sleeps.
+// Everywhere (macOS and Windows have no hook in Electrobun yet): a late-timer
+// detector locks right after resume.
 import { spawn } from "node:child_process";
 
+const TICK_MS = 10_000;
+const SLEEP_GAP_MS = 30_000;
+
+/**
+ * Whether the process was suspended between two ticks. Timers do not fire while
+ * the machine sleeps, so a tick far later than scheduled means we were asleep.
+ * Which clock shows the gap differs by OS (Linux CLOCK_MONOTONIC stops during
+ * suspend; Windows and macOS monotonic clocks may keep counting), so either
+ * clock running late counts. A long event-loop stall also locks, which is safe.
+ */
+export function sleptBetween(previous: { wall: number; mono: number }, now: { wall: number; mono: number }): boolean {
+	const late = Math.max(now.wall - previous.wall, now.mono - previous.mono) - TICK_MS;
+	return late > SLEEP_GAP_MS;
+}
+
 export function watchSleep(onSleep: () => void) {
-	let lastWall = Date.now();
-	let lastMono = performance.now();
+	let last = { wall: Date.now(), mono: performance.now() };
 	setInterval(() => {
-		const wall = Date.now();
-		const mono = performance.now();
-		// Timers do not fire during suspend; a large wall-clock jump means we were asleep.
-		// CLOCK_MONOTONIC stops during suspend on Linux, so the gap shows up only in wall time.
-		if (wall - lastWall - (mono - lastMono) > 30_000) onSleep();
-		lastWall = wall;
-		lastMono = mono;
-	}, 10_000);
+		const now = { wall: Date.now(), mono: performance.now() };
+		if (sleptBetween(last, now)) onSleep();
+		last = now;
+	}, TICK_MS);
 
 	if (process.platform !== "linux") return;
 	try {
