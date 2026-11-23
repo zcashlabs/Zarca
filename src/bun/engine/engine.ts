@@ -447,6 +447,11 @@ export class Engine {
 		return this.wallet.operations.get({ operationId });
 	}
 
+	/** Finite catch-up to the current tip; callers hold background sync (holdSync). */
+	async catchUp(): Promise<void> {
+		await this.wallet.sync({ signal: AbortSignal.timeout(90_000) });
+	}
+
 	async broadcast(operationId: string): Promise<PaymentState> {
 		return this.wallet.broadcast({ operationId });
 	}

@@ -48,6 +48,20 @@ class FakeEngine {
 		return { operationId, totalFee: 10_000n, steps: [{ expiryHeight: 1080 }] };
 	}
 	holdDepth = 0;
+	caughtUp = 0;
+	broadcasts: string[] = [];
+	broadcastImpl: (operationId: string) => Promise<void> = async () => {};
+	async catchUp() {
+		this.caughtUp++;
+	}
+	async broadcast(operationId: string) {
+		this.broadcasts.push(operationId);
+		await this.broadcastImpl(operationId);
+		const op = this.ops.get(operationId)!;
+		op.phase = "observing";
+		op.steps = [{ txid: `tx-${operationId}`, attempts: [{ outcome: "acknowledged" }], inclusion: null, observation: { state: "mempool" }, expiry: { reached: false } }];
+		return op;
+	}
 	async holdSync<T>(fn: () => Promise<T>) {
 		this.holdDepth++;
 		try {
@@ -218,6 +232,35 @@ describe("stale proposals", () => {
 		expect(engine.holdDepth).toBe(0);
 	});
 
+	test("signed but held back by a new tip: catch up and broadcast the same bytes, never re-sign", async () => {
+		engine.executeImpl = async (operationId) => {
+			engine.ops.get(operationId)!.phase = "ready";
+			engine.ops.get(operationId)!.steps = [{ txid: `tx-${operationId}`, attempts: [], inclusion: null, observation: null, expiry: { reached: false } }];
+			throw Object.assign(new Error("behind"), { code: "SYNC_REQUIRED", stage: "submission", retryable: true });
+		};
+		const payment = await service.authorize((await service.prepare(draft)).reviewId, "pw");
+		expect(payment.status).toBe("pending");
+		expect(engine.caughtUp).toBe(1);
+		expect(engine.broadcasts).toEqual(["op-2"]);
+		expect(engine.abandoned).not.toContain("op-2");
+		expect(payment.attempts[0]!.txids).toEqual(["tx-op-2"]);
+	});
+
+	test("signed but broadcast still fails: unknown, not retryable, not abandoned", async () => {
+		engine.executeImpl = async (operationId) => {
+			engine.ops.get(operationId)!.phase = "ready";
+			engine.ops.get(operationId)!.steps = [{ txid: `tx-${operationId}`, attempts: [], inclusion: null, observation: null, expiry: { reached: false } }];
+			throw Object.assign(new Error("behind"), { code: "SYNC_REQUIRED", stage: "submission", retryable: true });
+		};
+		engine.broadcastImpl = async () => {
+			throw Object.assign(new Error("still behind"), { code: "SYNC_REQUIRED", stage: "submission", retryable: true });
+		};
+		const payment = await service.authorize((await service.prepare(draft)).reviewId, "pw");
+		expect(payment.status).toBe("unknown");
+		expect(payment.attempts[0]!.error).toContain("Signed but not confirmed as broadcast");
+		expect(engine.abandoned).not.toContain("op-2");
+	});
+
 	test("a changed fee requires a new review and sends nothing", async () => {
 		const review = await service.prepare(draft);
 		const original = engine.propose.bind(engine);
@@ -257,6 +300,23 @@ describe("reconciliation", () => {
 		const payment = store.read((db) => getPayment(db, id));
 		expect(payment.status).toBe("failed");
 		expect(engine.abandoned).toContain("op-crash");
+	});
+
+	test("a crash after signing but before broadcast blocks retries until expiry", async () => {
+		const id = store.write((db) => {
+			const paymentId = createPayment(db, { recipient, amountZat: "5", memo: null, dueDate: null, status: "submitting", note: null, tags: [] });
+			createAttempt(db, paymentId, { operationId: "op-signed" });
+			return paymentId;
+		});
+		const op: Op = { operationId: "op-signed", phase: "ready", steps: [{ txid: "tx-signed", attempts: [], inclusion: null, observation: null, expiry: { reached: false } }] };
+		engine.ops.set("op-signed", op);
+		await service.reconcile();
+		expect(store.read((db) => getPayment(db, id)).status).toBe("unknown");
+		expect(engine.abandoned).not.toContain("op-signed");
+
+		op.steps[0]!.expiry = { reached: true };
+		await service.reconcile();
+		expect(store.read((db) => getPayment(db, id)).status).toBe("failed");
 	});
 
 	test("restored attempts settle only on chain evidence", async () => {
