@@ -9,11 +9,9 @@
 set -euo pipefail
 
 REPO="https://github.com/zcashlabs/zcashjs.git"
-BASE="7d1af080f04abcab46a66a0e1dd3f91d408a93dd"   # main: encryption at rest (#31), retained-operation errors (#37), macOS/Windows storage (#38)
+BASE="354129f04ea24ccc0e9a85a8ecc52eaef2fa04f6"   # main: lightwallet-protocol v0.6.0 (#28), THS testing API (#27), cheaper idle sync (#39)
 # Pull requests merged on top of BASE, as "number:commit".
-PULLS=(
-  "28:5a10a36"   # accept lightwallet-protocol v0.6.0
-)
+PULLS=()
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # Keep the checkout outside this repository: bundlers would otherwise pick up
@@ -27,7 +25,7 @@ cd "$work"
 git fetch --quiet origin main
 git reset --quiet --hard   # discard any local edits from earlier runs
 git checkout --quiet --detach "$BASE"
-for pull in "${PULLS[@]}"; do
+for pull in ${PULLS[@]+"${PULLS[@]}"}; do   # empty-array safe under set -u (bash 3.2)
   number="${pull%%:*}" commit="${pull##*:}"
   git fetch --quiet origin "pull/$number/head"
   resolved="$(git rev-parse FETCH_HEAD)"
