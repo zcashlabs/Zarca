@@ -11,7 +11,6 @@ Built with [Electrobun](https://electrobun.dev), React, TypeScript and [zcash.js
 Requirements: Linux x86_64, [Bun](https://bun.sh) 1.4+, Node 22+ and the Rust toolchain (for the first zcash.js build), plus WebKitGTK 4.1.
 
 ```sh
-bash scripts/vendor-zcashjs.sh   # builds the pinned zcash.js package into vendor/ (first run: several minutes)
 npx electrobun@2.0.7 prepare      # installs Hutch and projects the Electrobun devkit
 hutch install
 hutch run dev                     # build the view and launch the app

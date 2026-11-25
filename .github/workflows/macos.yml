@@ -6,7 +6,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/macos.yml"
-      - "scripts/vendor-zcashjs.sh"
+      - "package.json"
       - "tests/platform/**"
 
 permissions:
@@ -29,16 +29,6 @@ jobs:
           node /tmp/zwb/tests/node-fs-lock.mjs
           bun /tmp/zwb/tests/node-fs-lock.mjs
         continue-on-error: true
-      - name: Cache zcash.js build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/zarca
-            ~/.cargo
-            ~/.rustup
-          key: zcashjs-macos-${{ runner.arch }}-${{ hashFiles('scripts/vendor-zcashjs.sh') }}
-      - name: Build vendored zcash.js
-        run: bash scripts/vendor-zcashjs.sh
       - run: bun install
       - name: Unit tests
         run: bun test tests/unit
