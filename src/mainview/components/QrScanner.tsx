@@ -28,10 +28,15 @@ export function QrScanner({ onResult, onClose }: { onResult: (text: string) => v
 				const v = video.current!;
 				v.srcObject = stream;
 				await v.play();
-				const tick = () => {
+				// Decode about 4 frames a second instead of every animation frame (a full decode
+				// takes ~100 ms, so per-frame decoding saturates the UI thread). Frames stay at
+				// full resolution: dense unified-address codes stop decoding when downscaled.
+				let last = 0;
+				const tick = (now: number) => {
 					if (stopped) return;
 					const c = canvas.current!;
-					if (v.readyState === v.HAVE_ENOUGH_DATA) {
+					if (now - last >= 250 && v.readyState === v.HAVE_ENOUGH_DATA && v.videoWidth > 0) {
+						last = now;
 						c.width = v.videoWidth;
 						c.height = v.videoHeight;
 						const ctx = c.getContext("2d", { willReadFrequently: true })!;

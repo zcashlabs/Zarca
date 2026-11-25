@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ThemePreference } from "../shared/types";
 import { useSession } from "./lib/hooks";
 import { call, sessionChannel, syncChannel } from "./lib/rpc";
 import { ToastProvider } from "./components/ui";
 import { LockScreen } from "./screens/LockScreen";
-import { Shell } from "./screens/Shell";
+
+// The signed-in app loads as its own chunk so the lock screen starts faster.
+// It is fetched right after boot, so unlocking does not wait for it.
+const loadShell = () => import("./screens/Shell");
+const Shell = lazy(() => loadShell().then((m) => ({ default: m.Shell })));
 
 function useTheme(preference: ThemePreference | undefined) {
 	const [system, setSystem] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -37,6 +41,7 @@ export function App() {
 					if (sync) syncChannel.emit(sync);
 				}
 				setBooting(false);
+				void loadShell();
 			} catch {
 				if (!cancelled && attempt < 50) setTimeout(() => load(attempt + 1), 100);
 			}
@@ -50,5 +55,11 @@ export function App() {
 	if (booting || !session) {
 		return <div className="flex h-full items-center justify-center bg-bg" />;
 	}
-	return <ToastProvider>{session.unlocked ? <Shell session={session} /> : <LockScreen session={session} />}</ToastProvider>;
+	return <ToastProvider>{session.unlocked ? (
+				<Suspense fallback={<div className="h-full bg-bg" />}>
+					<Shell session={session} />
+				</Suspense>
+			) : (
+				<LockScreen session={session} />
+			)}</ToastProvider>;
 }
