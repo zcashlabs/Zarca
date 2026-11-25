@@ -96,6 +96,17 @@ jobs:
           test -d "$ZARCA_DATA_DIR/wallets"
           # Still running ten seconds after startup (no crash on window/webview creation).
           tasklist | grep -qi 'bun.exe'
+          # Capture the screen so a reviewer can see the window actually rendered.
+          mkdir -p screenshots
+          powershell -NoProfile -Command '
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $img = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            $g = [System.Drawing.Graphics]::FromImage($img)
+            $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $img.Save("screenshots/windows-first-run.png")
+            Write-Output "screenshot $($b.Width)x$($b.Height)"
+          ' || echo "screenshot unavailable"
           taskkill //F //IM launcher.exe //T >/dev/null 2>&1 || true
           taskkill //F //IM bun.exe //T >/dev/null 2>&1 || true
       - name: List build output
@@ -108,4 +119,11 @@ jobs:
         with:
           name: zarca-windows-canary
           path: artifacts
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshots
+          path: screenshots
+          if-no-files-found: ignore
           retention-days: 7

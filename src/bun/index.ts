@@ -97,7 +97,8 @@ async function openWindow() {
 	window = new BrowserWindow({
 		title: "Zarca",
 		url,
-		frame: { width: 1280, height: 840, x: 120, y: 80 },
+		// Fits a 1366×768 laptop work area (taskbar/menu bar included).
+		frame: { width: 1200, height: 700, x: 80, y: 40 },
 		rpc,
 	});
 	// The view may only show bundled pages (and the local dev server during development).
