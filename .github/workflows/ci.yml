@@ -17,12 +17,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.5
-      # Unit tests never load zcash.js, so they skip the (slow) vendored build.
-      - name: Install dependencies without the vendored zcash.js
-        run: |
-          jq 'del(.dependencies["@zcashlabs/zcash.js"])' package.json > package.ci.json
-          mv package.ci.json package.json
-          bun install --no-save
+      - run: bun install
       - run: bun test tests/unit
 
   unit-windows:
@@ -36,11 +31,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.5
-      - name: Install dependencies without the vendored zcash.js
-        run: |
-          jq 'del(.dependencies["@zcashlabs/zcash.js"])' package.json > package.ci.json
-          mv package.ci.json package.json
-          bun install --no-save
+      - run: bun install
       - run: bun test tests/unit
 
   typecheck:
@@ -54,15 +45,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.4
-      - name: Cache zcash.js build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/zarca
-            ~/.cargo
-            ~/.rustup
-          key: zcashjs-${{ hashFiles('scripts/vendor-zcashjs.sh') }}
-      - run: bash scripts/vendor-zcashjs.sh
       - run: bun install
       - name: Prepare Electrobun devkit
         run: npx --yes electrobun@2.0.7 prepare
